@@ -34,7 +34,9 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: Run tracker
+        shell: bash
         run: |
+          set -euo pipefail
           cp config.example.yaml config.yaml
           python job_tracker.py --config config.yaml 2>&1 | tee tracker.log
 
