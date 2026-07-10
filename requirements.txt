@@ -1,0 +1,11 @@
+requests>=2.31,<3
+beautifulsoup4>=4.12,<5
+playwright>=1.49,<2
+PyYAML>=6.0,<7
+python-dotenv>=1.0,<2
+gspread>=6.1,<7
+google-auth>=2.29,<3
+pandas>=2.2,<3
+tenacity>=8.2,<10
+python-dateutil>=2.9,<3
+pytest>=8.3,<9
