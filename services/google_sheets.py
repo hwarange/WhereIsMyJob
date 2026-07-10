@@ -115,11 +115,14 @@ class GoogleSheetsService:
         if not raw_credentials:
             raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON is not set")
         try:
-            credential_path = Path(raw_credentials)
-            if credential_path.exists():
-                info = json.loads(credential_path.read_text(encoding="utf-8"))
-            else:
+            if raw_credentials.lstrip().startswith("{"):
                 info = json.loads(raw_credentials)
+            else:
+                credential_path = Path(raw_credentials)
+                if credential_path.exists():
+                    info = json.loads(credential_path.read_text(encoding="utf-8"))
+                else:
+                    info = json.loads(raw_credentials)
         except (OSError, json.JSONDecodeError) as exc:
             raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON must contain valid service-account JSON or a file path") from exc
         try:
