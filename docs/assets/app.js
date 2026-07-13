@@ -1,8 +1,15 @@
-const state = { jobs: [], filter: "all", query: "", activeKey: null };
+const state = { jobs: [], filter: "all", companyFilter: "all", query: "", activeKey: null };
 const storageKey = "where-is-my-job:application-notes:v1";
 const $ = (selector) => document.querySelector(selector);
 const localChanges = () => { try { return JSON.parse(localStorage.getItem(storageKey)) || {}; } catch { return {}; } };
 const saveChanges = (changes) => localStorage.setItem(storageKey, JSON.stringify(changes));
+const enterpriseNames = ["삼성", "LG", "SK", "현대", "기아", "포스코", "롯데", "한화", "GS", "두산", "CJ", "KT", "네이버", "카카오", "쿠팡", "NHN", "신세계", "HD현대"];
+const stackRules = [
+  ["Python", /\bpython\b/i], ["PyTorch", /\bpytorch\b/i], ["TensorFlow", /\btensorflow\b/i], ["LLM", /\bllm\b|생성형 ai/i],
+  ["RAG", /\brag\b|검색 증강/i], ["MLOps", /\bmlops\b/i], ["NLP", /\bnlp\b|자연어 처리/i], ["Computer Vision", /computer vision|컴퓨터 비전|영상 인식/i],
+  ["SQL", /\bsql\b/i], ["AWS", /\baws\b|아마존 웹 서비스/i], ["GCP", /\bgcp\b|google cloud/i], ["Docker", /\bdocker\b/i],
+  ["Kubernetes", /\bkubernetes\b|\bk8s\b/i], ["Java", /\bjava\b/i], ["TypeScript", /\btypescript\b/i], ["React", /\breact\b/i],
+];
 
 function dateText(value) {
   if (!value) return "마감일 미정";
@@ -18,23 +25,30 @@ function deadline(value) {
 }
 function escaped(value = "") { const element = document.createElement("span"); element.textContent = value; return element.innerHTML; }
 function currentJobs() { return state.jobs.map(job => ({ ...job, ...(localChanges()[job.job_key] || {}) })); }
+function isEnterprise(job) { return enterpriseNames.some(name => (job.company || "").toLowerCase().includes(name.toLowerCase())); }
+function techStacks(job) { const text = [job.title, job.position, job.raw_text].join(" "); return stackRules.filter(([, pattern]) => pattern.test(text)).map(([name]) => name).slice(0, 4); }
 function render() {
   const jobs = currentJobs();
   const visible = jobs.filter(job => {
     const matchesFilter = state.filter === "all" || job.status === state.filter;
+    const matchesCompany = state.companyFilter === "all" || isEnterprise(job);
     const q = state.query.toLowerCase();
-    const haystack = [job.company, job.title, job.position, job.location, job.source, job.matched_keywords?.join(" ")].join(" ").toLowerCase();
-    return matchesFilter && haystack.includes(q);
+    const haystack = [job.company, job.title, job.position, job.location, job.source, job.matched_keywords?.join(" "), techStacks(job).join(" ")].join(" ").toLowerCase();
+    return matchesFilter && matchesCompany && haystack.includes(q);
   });
   $("#allCount").textContent = jobs.length;
   $("#filterAll").textContent = jobs.length;
   $("#activeCount").textContent = jobs.filter(job => ["관심", "지원완료", "서류합격", "면접중"].includes(job.status)).length;
   $("#closingCount").textContent = jobs.filter(job => { const day = deadline(job.deadline); return day.className === "soon"; }).length;
+  $("#enterpriseCount").textContent = jobs.filter(isEnterprise).length;
   $("#listCount").textContent = `${visible.length}개의 공고`;
   const list = $("#jobList");
   list.innerHTML = visible.map(job => {
     const due = deadline(job.deadline);
-    return `<article class="job"><div class="job-meta"><strong>${escaped(job.company || "기업 정보 없음")}</strong><span class="deadline ${due.className}">${due.text} · ${dateText(job.deadline)}</span></div><div><h2 class="job-title">${escaped(job.title || job.position || "채용 공고")}</h2><span class="job-location">${escaped(job.location || "근무지 미정")}</span></div><div class="job-role"><span>${escaped(job.position || "직무 미정")}</span><span>${escaped(job.source || "공식 채용 페이지")}</span></div><span class="tag" data-status="${escaped(job.status)}">${escaped(job.status)}</span><button class="manage" type="button" data-key="${escaped(job.job_key)}" aria-label="${escaped(job.title)} 관리">+</button></article>`;
+    const stacks = techStacks(job);
+    const stackMarkup = stacks.length ? `<div class="tech-stacks">${stacks.map(stack => `<span>${escaped(stack)}</span>`).join("")}</div>` : `<span class="no-stack">기술 스택 정보 없음</span>`;
+    const enterpriseMarkup = isEnterprise(job) ? `<span class="enterprise-tag">대기업</span>` : "";
+    return `<article class="job"><div class="job-meta"><strong>${escaped(job.company || "기업 정보 없음")}</strong><span class="deadline ${due.className}">${due.text} · ${dateText(job.deadline)}</span></div><div><div class="job-title-row"><h2 class="job-title">${escaped(job.title || job.position || "채용 공고")}</h2>${enterpriseMarkup}</div><span class="job-location">${escaped(job.location || "근무지 미정")}</span>${stackMarkup}</div><div class="job-role"><span>${escaped(job.position || "직무 미정")}</span><span>${escaped(job.source || "공식 채용 페이지")}</span></div><span class="tag" data-status="${escaped(job.status)}">${escaped(job.status)}</span><button class="manage" type="button" data-key="${escaped(job.job_key)}" aria-label="${escaped(job.title)} 관리">+</button></article>`;
   }).join("");
   $("#emptyState").hidden = visible.length !== 0;
 }
@@ -49,7 +63,8 @@ async function loadJobs() {
   render();
 }
 $("#search").addEventListener("input", event => { state.query = event.target.value.trim(); render(); });
-$("#filters").addEventListener("click", event => { const button = event.target.closest("[data-filter]"); if (!button) return; state.filter = button.dataset.filter; document.querySelectorAll(".filter").forEach(item => item.classList.toggle("active", item === button)); render(); });
+$("#filters").addEventListener("click", event => { const button = event.target.closest("[data-filter]"); if (!button) return; state.filter = button.dataset.filter; document.querySelectorAll("#filters .filter").forEach(item => item.classList.toggle("active", item === button)); render(); });
+$("#companyFilters").addEventListener("click", event => { const button = event.target.closest("[data-company-filter]"); if (!button) return; state.companyFilter = button.dataset.companyFilter; document.querySelectorAll("[data-company-filter]").forEach(item => item.classList.toggle("active", item === button)); render(); });
 $("#jobList").addEventListener("click", event => { const button = event.target.closest(".manage"); if (button) openDialog(button.dataset.key); });
 $("#manageForm").addEventListener("submit", () => { if (!state.activeKey) return; const all = localChanges(); all[state.activeKey] = { status: $("#statusSelect").value, memo: $("#memoInput").value.trim() }; saveChanges(all); render(); });
 $("#downloadButton").addEventListener("click", () => { const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), changes: localChanges() }, null, 2)], { type: "application/json" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "where-is-my-job-notes.json"; link.click(); URL.revokeObjectURL(link.href); });

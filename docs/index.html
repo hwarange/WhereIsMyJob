@@ -48,6 +48,13 @@
           <button class="filter" data-filter="서류합격">서류합격</button>
           <button class="filter" data-filter="마감">마감</button>
         </div>
+        <div class="company-filter-row" aria-label="기업 분류 필터">
+          <span>기업 분류</span>
+          <div class="filters compact" id="companyFilters">
+            <button class="filter active" data-company-filter="all">전체 기업</button>
+            <button class="filter enterprise-filter" data-company-filter="enterprise">대기업 <b id="enterpriseCount">0</b></button>
+          </div>
+        </div>
         <div class="list-heading"><span id="listCount">0개의 공고</span><span>마감일 순</span></div>
         <div id="jobList" class="job-list" aria-live="polite"></div>
         <div id="emptyState" class="empty-state" hidden>
