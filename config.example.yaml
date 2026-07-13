@@ -50,7 +50,7 @@ sources:
 
   jumpit:
     enabled: true
-    url: https://jumpit.saramin.co.kr/positions
+    url: https://jumpit.saramin.co.kr/positions?integrated=true
     use_playwright: true
     render_wait_ms: 3000
     # 목록에 없는 학력 조건을 상세 공고에서 확인합니다.
