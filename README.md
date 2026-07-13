@@ -85,7 +85,7 @@ python job_tracker.py --config config.yaml
 
 ## 검증된 공고 출처
 
-대시보드에는 실제 채용 상세 공고만 올립니다. 현재 자동 수집은 **사람인 공식 API**를 기준으로 하며, GitHub Repository Secret `SARAMIN_ACCESS_KEY`가 필요합니다. `Settings → Secrets and variables → Actions → New repository secret`에서 이름을 `SARAMIN_ACCESS_KEY`로 넣어 주세요.
+대시보드에는 실제 채용 상세 공고만 올립니다. 현재 자동 수집은 **사람인 공개 검색 결과 카드**를 기준으로 하며, 공개 검색 페이지에서 회사명·공고명·마감일·공고 식별자를 수집합니다. 상세 공고 페이지는 자동으로 요청하지 않으므로 API 키와 로그인은 필요하지 않습니다.
 
 잡코리아는 현재 `robots.txt`가 검색 수집을 허용하지 않아 비활성화했고, 잡플래닛은 공개 API/상세 공고 수집기를 제공하지 않아 포함하지 않았습니다. 자소설·점핏·기업 채용 페이지도 실제 상세 공고만 안정적으로 검증할 수 있을 때까지 비활성화합니다. 일반 메뉴·SNS·FAQ 링크를 공고로 처리하지 않습니다.
 
@@ -109,7 +109,7 @@ filter:
 
 1. 코드를 GitHub 저장소에 올립니다.
 2. `Settings → Pages → Build and deployment`에서 **GitHub Actions**를 선택합니다.
-3. `.github/workflows/job-tracker.yml`과 `.github/workflows/deploy-pages.yml`을 활성화합니다. 공고 수집을 위해 `SARAMIN_ACCESS_KEY`를 Repository Secret으로 추가하고, Slack 알림을 원하면 `SLACK_WEBHOOK_URL`도 추가하세요.
+3. `.github/workflows/job-tracker.yml`과 `.github/workflows/deploy-pages.yml`을 활성화합니다. API 키는 필요 없으며, Slack 알림을 원하면 `SLACK_WEBHOOK_URL`만 Repository Secret으로 추가하세요.
 4. Actions 탭에서 **Collect AI job postings**을 수동 실행합니다. 공고 데이터가 자동 커밋되고 이어서 Pages가 배포됩니다.
 
 수집 워크플로는 UTC 00, 06, 12, 18시에 실행되며 한국 시간으로 09, 15, 21, 03시입니다. `workflow_dispatch`로 수동 실행할 수도 있습니다. 수집 결과가 바뀌었을 때만 `docs/data/jobs.json`을 커밋합니다.

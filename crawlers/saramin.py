@@ -7,6 +7,7 @@ import logging
 import os
 import xml.etree.ElementTree as ET
 from typing import Any, Mapping
+from urllib.parse import urlencode, urljoin, urlsplit, urlunsplit
 
 from .base import BaseCrawler, CrawlerError, Job, clean_text, first_non_empty
 
@@ -35,15 +36,18 @@ def _json_value(value: Any, *keys: str) -> Any:
 
 
 class SaraminCrawler(BaseCrawler):
-    """Collect jobs through Saramin's official job-search API."""
+    """Collect public Saramin search cards or the official API when configured."""
 
     api_url = "https://oapi.saramin.co.kr/job-search"
+    search_url = "https://www.saramin.co.kr/zf_user/search/recruit"
 
     def __init__(self, settings: Mapping[str, Any] | None = None, session: Any = None, access_key: str | None = None) -> None:
         super().__init__("saramin", settings, session)
         self.access_key = access_key or os.getenv("SARAMIN_ACCESS_KEY", "")
 
     def collect(self) -> list[Job]:
+        if str(self.settings.get("method", "public_search")).strip().lower() != "api":
+            return self._collect_public_search()
         if not self.access_key:
             logger.warning("saramin: SARAMIN_ACCESS_KEY is not set; skipping API collection")
             return []
@@ -60,6 +64,68 @@ class SaraminCrawler(BaseCrawler):
                 jobs.extend(self.parse_response(response, keyword=keyword))
             except Exception as exc:
                 logger.exception("saramin collection failed for keyword %r: %s", keyword, exc)
+        return jobs
+
+    def _collect_public_search(self) -> list[Job]:
+        """Collect only public search-result cards, never job-detail pages.
+
+        The source's robots policy currently permits this search path.  The
+        detail URLs are retained for the user to open, but they are not fetched
+        by the crawler.
+        """
+
+        base_url = str(self.settings.get("url", self.search_url))
+        keywords = self.settings.get("keywords") or ["AI Engineer 신입"]
+        jobs: list[Job] = []
+        for keyword in keywords:
+            try:
+                response = self.request(self._search_url(base_url, str(keyword)))
+                jobs.extend(self.parse_search_html(response.text, response.url))
+            except Exception as exc:
+                logger.exception("saramin public-search collection failed for keyword %r: %s", keyword, exc)
+        return jobs
+
+    @staticmethod
+    def _search_url(base_url: str, keyword: str) -> str:
+        parts = urlsplit(base_url)
+        existing = f"{parts.query}&" if parts.query else ""
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, existing + urlencode({"searchword": keyword}), parts.fragment))
+
+    def parse_search_html(self, html: str, base_url: str) -> list[Job]:
+        """Parse Saramin's public ``item_recruit`` result cards."""
+
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError as exc:  # pragma: no cover - dependency install issue
+            raise CrawlerError("beautifulsoup4 is required for Saramin search collection") from exc
+
+        soup = BeautifulSoup(html, "html.parser")
+        jobs: list[Job] = []
+        for card in soup.select(".item_recruit"):
+            job_link = card.select_one(".job_tit a[href]")
+            if job_link is None:
+                continue
+            source_job_id = str(card.get("value", "")).strip()
+            title = first_non_empty(job_link.get("title"), job_link.get_text(" ", strip=True))
+            url = urljoin(base_url, str(job_link.get("href", "")))
+            company = clean_text((card.select_one(".corp_name") or "").get_text(" ", strip=True) if card.select_one(".corp_name") else "")
+            deadline = clean_text((card.select_one(".job_date .date") or "").get_text(" ", strip=True) if card.select_one(".job_date .date") else "")
+            condition = clean_text((card.select_one(".job_condition") or "").get_text(" ", strip=True) if card.select_one(".job_condition") else "")
+            sector = clean_text((card.select_one(".job_sector") or "").get_text(" ", strip=True) if card.select_one(".job_sector") else "")
+            if not source_job_id.isdigit() or not title or not url:
+                continue
+            jobs.append(
+                self.make_job(
+                    source_job_id=source_job_id,
+                    company=company,
+                    title=title,
+                    position=sector or title,
+                    experience=condition,
+                    deadline=deadline,
+                    url=url,
+                    raw_text=clean_text(card.get_text(" ", strip=True)),
+                )
+            )
         return jobs
 
     def parse_response(self, response: Any, keyword: str = "") -> list[Job]:

@@ -8,10 +8,10 @@ filter:
 
 sources:
   saramin_api:
-    # 사람인 공식 API 키(SARAMIN_ACCESS_KEY)를 등록한 경우에만 수집됩니다.
+    # 공개 검색 결과 카드만 수집합니다. 상세 공고 페이지는 요청하지 않습니다.
     enabled: true
-    url: https://oapi.saramin.co.kr/job-search
-    count_per_keyword: 50
+    method: public_search
+    url: https://www.saramin.co.kr/zf_user/search/recruit
     keywords:
       - "AI Engineer 신입"
       - "머신러닝 신입"

@@ -66,6 +66,13 @@ class JobFilter:
             for rule in self.rules
             if rule.enabled and rule.type == "include" and rule.keyword.casefold() in {"신입", "junior", "entry", "경력무관", "new graduate"}
         }
+        self.role_keywords = {
+            rule.keyword
+            for rule in self.rules
+            if rule.enabled
+            and rule.type == "include"
+            and rule.keyword.casefold() not in {"신입", "junior", "entry", "경력무관", "new graduate", "공채"}
+        }
 
     def score(self, job: Job) -> tuple[int, list[str]]:
         text = " ".join(
@@ -90,6 +97,12 @@ class JobFilter:
 
     def include(self, job: Job) -> bool:
         result = self.evaluate(job)
+        # A keyword that appears only in an ad label, company description, or
+        # surrounding search-page markup must not turn an unrelated role into
+        # an AI/ML job.  The role itself has to state an AI/ML specialty.
+        role_text = " ".join((job.title, job.position))
+        if self.role_keywords and not any(_contains(role_text, keyword) for keyword in self.role_keywords):
+            return False
         if result.score < self.min_score:
             return False
         if self.strict_entry_level:

@@ -1,6 +1,7 @@
 import json
 
 from crawlers.base import Job, extract_job_detail_records, json_ld_to_jobs
+from crawlers.saramin import SaraminCrawler
 from services.dedupe import build_job_key, dedupe_jobs, normalize_url
 from services.filtering import JobFilter
 from services.site_data import export_site_data
@@ -29,6 +30,19 @@ def test_filter_scores_entry_level_ai_job():
     )
     assert tracker_filter.filter_jobs([job]) == [job]
     assert job.score == 10
+
+
+def test_filter_rejects_non_ai_role_with_ai_only_in_context():
+    job = Job(title="시스템 엔지니어 신입", position="시스템 엔지니어", raw_text="AI Engineer 검색 결과")
+    tracker_filter = JobFilter(
+        [
+            {"type": "include", "keyword": "AI", "weight": 3, "enabled": True},
+            {"type": "include", "keyword": "신입", "weight": 5, "enabled": True},
+        ],
+        strict_entry_level=True,
+        min_score=6,
+    )
+    assert tracker_filter.filter_jobs([job]) == []
 
 
 def test_site_export_preserves_existing_management_fields(tmp_path):
@@ -62,3 +76,16 @@ def test_detail_link_extractor_rejects_menu_and_social_links():
 def test_json_ld_requires_job_posting_type():
     html = '<script type="application/ld+json">{"@type":"Organization","title":"채용 안내"}</script>'
     assert json_ld_to_jobs(html, "https://example.com", "company_sites") == []
+
+
+def test_saramin_public_search_parses_only_recruitment_cards():
+    html = """
+    <div class="item_recruit" value="12345">
+      <div class="area_job"><h2 class="job_tit"><a href="/zf_user/jobs/relay/view?rec_idx=12345" title="AI Engineer 신입">AI Engineer 신입</a></h2></div>
+      <div class="job_date"><span class="date">~ 08/31</span></div>
+      <div class="job_condition">신입 · 서울</div><div class="job_sector">AI·ML</div><div class="corp_name">테스트 기업</div>
+    </div>
+    <div class="item_recruit" value="not-a-job"><a href="/notice">공지</a></div>
+    """
+    jobs = SaraminCrawler({"method": "public_search"}).parse_search_html(html, "https://www.saramin.co.kr")
+    assert [(job.source_job_id, job.company, job.title) for job in jobs] == [("12345", "테스트 기업", "AI Engineer 신입")]
