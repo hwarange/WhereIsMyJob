@@ -30,6 +30,8 @@ sources:
     url: https://jasoseol.com/recruit
     use_playwright: true
     render_wait_ms: 5000
+    # 목록에는 회사명만 있어 상세 페이지의 '모집 직무'를 직무별 공고로 분리합니다.
+    detail_fetch_limit: 40
     keywords:
       - AI
       - 머신러닝

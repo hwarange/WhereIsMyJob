@@ -124,3 +124,24 @@ def test_jumpit_detail_enrichment_exposes_education_requirement():
 def test_jasoseol_recruit_board_is_not_given_a_keyword_query():
     crawler = JasoseolCrawler({"url": "https://jasoseol.com/recruit", "keywords": ["AI"]})
     assert urlsplit(crawler.settings["url"]).path == "/recruit"
+
+
+def test_jasoseol_parses_board_links_and_expands_detail_roles():
+    crawler = JasoseolCrawler({"request_delay_sec": 0})
+    board = '<a href="/recruit/104845">시작 파수에이아이</a><a href="/calendar">채용달력</a>'
+    listing = crawler.parse_recruit_board(board, "https://jasoseol.com/recruit")[0]
+    detail = """
+    <main>
+      <h2>파수에이아이</h2><h1>2026년 2차 신입 공개 채용</h1>
+      <section><h2>모집 직무</h2><div>
+        <li>신입/인턴 AI컨설턴트 25명 작성 자소서 문항 보기</li>
+        <li>신입/인턴 인공지능 딥러닝 25명 작성 자소서 문항 보기</li>
+      </div></section>
+      <p>학력무관</p>
+    </main>
+    """
+    jobs = crawler.parse_recruit_detail(detail, listing)
+    assert [(job.source_job_id, job.company, job.position, job.experience) for job in jobs] == [
+        ("104845:1", "파수에이아이", "AI컨설턴트", "신입/인턴"),
+        ("104845:2", "파수에이아이", "인공지능 딥러닝", "신입/인턴"),
+    ]
