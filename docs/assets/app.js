@@ -6,12 +6,12 @@ const saveChanges = (changes) => localStorage.setItem(storageKey, JSON.stringify
 
 function dateText(value) {
   if (!value) return "마감일 미정";
-  const date = new Date(value); if (Number.isNaN(date)) return value;
+  const date = new Date(value); if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric" }).format(date);
 }
 function deadline(value) {
   if (!value) return { text: "마감일 미정", className: "" };
-  const end = new Date(value); if (Number.isNaN(end)) return { text: value, className: "" };
+  const end = new Date(value); if (Number.isNaN(end.getTime())) return { text: value, className: "" };
   const days = Math.ceil((end.setHours(23,59,59,999) - new Date().setHours(0,0,0,0)) / 86400000);
   if (days < 0) return { text: "마감", className: "ended" };
   return { text: days === 0 ? "D-day" : `D-${days}`, className: days <= 7 ? "soon" : "" };
