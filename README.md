@@ -1,6 +1,6 @@
 # WhereIsMyJob
 
-신입·Junior·Entry-level AI/ML 채용공고를 여러 공개 채용 페이지에서 수집해 Google Sheets에 누적하는 Python 자동 트래커입니다. 각 수집기는 독립적으로 실행되므로 한 사이트의 HTML 변경이나 일시적인 오류가 다른 사이트의 수집을 중단시키지 않습니다.
+신입·Junior·Entry-level AI/ML 채용공고를 여러 공개 채용 페이지에서 수집해 GitHub Pages 대시보드에 누적하는 Python 자동 트래커입니다. 각 수집기는 독립적으로 실행되므로 한 사이트의 HTML 변경이나 일시적인 오류가 다른 사이트의 수집을 중단시키지 않습니다.
 
 ## 동작 흐름
 
@@ -8,7 +8,7 @@
 2. `Job` 표준 모델로 회사명·공고명·직무·근무지·링크·게시일·마감일·경력·고용형태·원문을 통일합니다.
 3. AI/ML 및 신입 관련 키워드에는 가점을 주고 Senior/Lead/경력 연차/마케팅·영업 등에는 감점을 주어 `min_score` 이상만 Tracker에 반영합니다.
 4. `source + source_job_id` → `source + 정규화 URL` → `회사 + 제목 + 마감일` 순으로 SHA-256 `job_key`를 만들어 중복을 제거합니다.
-5. `Raw_Jobs`에는 수집 원문을 보관하고, `Tracker`에는 필터 결과를 업서트합니다. 기존 Tracker 행의 `상태`와 `메모`는 자동 실행에서 보존됩니다.
+5. 필터된 공고는 `docs/data/jobs.json`으로 내보내지고, GitHub Pages 대시보드에서 상태와 메모를 관리할 수 있습니다.
 
 ## 파일 구성
 
@@ -27,6 +27,8 @@ services/
   dedupe.py                    # URL 정규화 및 job_key 생성
   google_sheets.py             # 시트 생성, 원문/Tracker/로그 업서트
   notify.py                    # 선택적 Slack Webhook 알림
+  site_data.py                 # GitHub Pages용 공고 JSON 내보내기
+docs/                          # GitHub Pages 정적 대시보드
 config.example.yaml            # 설정 예시
 .env.example                   # 환경변수 이름 예시
 requirements.txt
@@ -51,24 +53,23 @@ Copy-Item config.example.yaml config.yaml       # macOS/Linux: cp config.example
 Copy-Item .env.example .env                     # macOS/Linux: cp .env.example .env
 ```
 
-환경변수는 `.env` 또는 셸 환경에 넣습니다. `.env`, `config.yaml`, 서비스 계정 JSON은 Git에 커밋하지 마세요.
+환경변수는 `.env` 또는 셸 환경에 넣습니다. `.env`, `config.yaml`은 Git에 커밋하지 마세요.
 
 ```env
-GOOGLE_SHEET_ID=Google_Sheet_ID
-GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account", ...}
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 ```
 
-드라이런은 Google Sheets에 쓰지 않고 필터링된 공고를 JSON으로 출력합니다.
+드라이런은 대시보드 데이터에 쓰지 않고 필터링된 공고를 JSON으로 출력합니다.
 
 ```bash
 python job_tracker.py --config config.yaml --dry-run
 python job_tracker.py --config config.yaml --dry-run --source saramin
 python job_tracker.py --config config.yaml --dry-run --source jumpit
+python job_tracker.py --config config.yaml --export-json docs/data/jobs.json
 python -m pytest -q
 ```
 
-일반 실행은 모든 `enabled: true` 소스를 실행합니다.
+GitHub Pages 운영에는 `--export-json` 명령을 사용합니다. 이 명령은 Google Sheets 인증 없이 모든 `enabled: true` 소스를 실행합니다.
 
 ```bash
 python job_tracker.py --config config.yaml
@@ -76,27 +77,11 @@ python job_tracker.py --config config.yaml
 
 기본 설정에서는 사람인 수집을 실행하지 않습니다. 특정 사이트가 실패해도 다른 소스는 계속 실행되며 실패 내용은 로그와 `Run_Log`에 기록됩니다.
 
-## Google Cloud와 Google Sheets 설정
+## GitHub Pages 대시보드
 
-1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트를 만듭니다.
-2. `APIs & Services → Library`에서 **Google Sheets API**와 **Google Drive API**를 활성화합니다.
-3. `IAM & Admin → Service Accounts`에서 서비스 계정을 만들고 JSON 키를 발급합니다.
-4. Google Sheets를 만들고 서비스 계정의 `client_email` 주소를 편집자 권한으로 공유합니다.
-5. 시트 ID를 `https://docs.google.com/spreadsheets/d/<여기>/edit`에서 복사해 `GOOGLE_SHEET_ID`에 넣습니다.
-6. 서비스 계정 JSON 전체를 `GOOGLE_SERVICE_ACCOUNT_JSON`에 넣습니다. GitHub Actions에서는 Repository Secret으로 등록합니다.
+대시보드는 [docs/index.html](docs/index.html)과 `docs/data/jobs.json`으로 동작합니다. 공고 카드의 `+` 버튼을 눌러 상태와 메모를 관리할 수 있으며, 이 변경 사항은 현재 브라우저에 저장됩니다. 다른 기기에서도 보관하려면 **내 관리 내용 내려받기**로 JSON 파일을 저장하세요.
 
-첫 실행 시 다음 워크시트를 자동 생성하고 첫 행의 컬럼을 보장합니다.
-
-| 시트 | 컬럼 |
-|---|---|
-| `Tracker` | 게시일, 마감일, 기업명, 공고명, 직무, 근무지, 링크, 출처, 상태, 메모, job_key, first_seen_at, last_seen_at, updated_at, score, matched_keywords |
-| `Raw_Jobs` | collected_at, source, source_job_id, company, title, position, location, url, posted_at, deadline, experience, employment_type, raw_text, job_key |
-| `Search_Rules` | type, keyword, weight, enabled, note |
-| `Sources` | source, enabled, method, url, frequency, note |
-| `Company_Targets` | company, enabled, url, query_hint, note |
-| `Run_Log` | run_at, status, source, fetched_count, filtered_count, new_count, updated_count, error_message, duration_sec |
-
-`Tracker`는 `job_key`가 같은 행을 갱신하고, 새 공고만 `상태=신규`로 추가합니다. 기존 `상태`, `메모`, `first_seen_at`은 유지하고 `last_seen_at`, `updated_at`은 실행 시각으로 갱신합니다. 삭제된 공고는 행을 삭제하지 않고 마지막 확인 시각을 보존합니다.
+공유 상태/메모는 `docs/data/jobs.json`의 공고별 `status`, `memo`를 GitHub에서 편집해 관리할 수 있습니다. 다음 자동 수집에서도 같은 `job_key`의 값은 보존됩니다.
 
 ## 필터 설정
 
@@ -114,17 +99,14 @@ filter:
 
 `strict_entry_level: true`이면 신입·Junior·Entry·경력무관 키워드가 없는 공고를 제외합니다. `false`이면 AI/ML 관련성이 충분히 높은 공고를 포함할 수 있습니다. 키워드는 대소문자를 구분하지 않으며, `AI`, `ML`, `PM`, `PO` 같은 짧은 영문 토큰은 단어 단위로만 매칭합니다.
 
-## GitHub Actions 배포
+## GitHub Actions와 Pages 배포
 
 1. 코드를 GitHub 저장소에 올립니다.
-2. `Settings → Secrets and variables → Actions`에 다음 Repository Secrets를 추가합니다.
-   - `GOOGLE_SHEET_ID`
-   - `GOOGLE_SERVICE_ACCOUNT_JSON`
-   - `SLACK_WEBHOOK_URL` (선택)
-3. `.github/workflows/job-tracker.yml`을 활성화합니다.
-4. Actions 탭에서 `Run workflow`로 수동 실행해 첫 동작을 확인합니다.
+2. `Settings → Pages → Build and deployment`에서 **GitHub Actions**를 선택합니다.
+3. `.github/workflows/job-tracker.yml`과 `.github/workflows/deploy-pages.yml`을 활성화합니다. Slack 알림을 원하면 `SLACK_WEBHOOK_URL`만 Repository Secret으로 추가하세요.
+4. Actions 탭에서 **Collect AI job postings**을 수동 실행합니다. 공고 데이터가 자동 커밋되고 이어서 Pages가 배포됩니다.
 
-워크플로는 UTC 00, 06, 12, 18시에 실행되며 한국 시간으로 09, 15, 21, 03시입니다. `workflow_dispatch`로 수동 실행할 수도 있습니다. 의존성, Chromium, `config.example.yaml` 복사, 트래커 실행, 실패 로그 업로드가 모두 포함되어 있습니다.
+수집 워크플로는 UTC 00, 06, 12, 18시에 실행되며 한국 시간으로 09, 15, 21, 03시입니다. `workflow_dispatch`로 수동 실행할 수도 있습니다. 수집 결과가 바뀌었을 때만 `docs/data/jobs.json`을 커밋합니다.
 
 ## 수집 안전 규칙
 
@@ -134,6 +116,6 @@ filter:
 - 사이트별 오류는 `Run_Log`에 남기고 전체 실행은 가능한 범위에서 계속합니다.
 - 사이트 HTML 구조가 바뀌면 해당 `crawlers/<source>.py`의 선택자/응답 파서만 수정하면 됩니다.
 
-## Vercel 확장 방향
+## 운영 메모
 
-수집과 스케줄링은 GitHub Actions에 두고, 이후 Vercel은 Google Sheets 또는 별도 DB를 읽는 읽기 전용 대시보드로 확장하는 구성이 적합합니다. `job_tracker.py`의 수집·필터·시트 서비스는 UI와 분리되어 있으므로, 추후 FastAPI/서버리스 함수에서 `load_sheet_records("Tracker")`와 동일한 저장소 계층을 호출하고 Next.js 화면에서 상태·점수·출처별 필터를 제공할 수 있습니다. Vercel 함수에서 장시간 Playwright를 실행하는 구조는 피하고, 수집은 현재처럼 Actions에서 수행하세요.
+GitHub Pages는 정적 사이트이므로 공고 수집은 GitHub Actions에서 수행합니다. 웹에서 바꾼 상태와 메모를 팀 전체에 실시간 저장하려면 별도 인증/DB가 필요합니다. 현재 구성은 개인 관리에는 브라우저 저장소, 공유 관리에는 GitHub의 JSON 편집을 사용합니다.

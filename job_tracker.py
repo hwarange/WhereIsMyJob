@@ -16,6 +16,7 @@ from services.dedupe import dedupe_jobs
 from services.filtering import JobFilter
 from services.google_sheets import GoogleSheetsService, now_iso
 from services.notify import notify_slack
+from services.site_data import export_site_data
 
 logger = logging.getLogger("job_tracker")
 
@@ -57,14 +58,20 @@ def _source_label(name: str) -> str:
     return "saramin" if name == "saramin_api" else name
 
 
-def run_tracker(config_path: str, *, dry_run: bool = False, source_filter: str | None = None) -> dict[str, Any]:
+def run_tracker(
+    config_path: str,
+    *,
+    dry_run: bool = False,
+    source_filter: str | None = None,
+    export_json: str | None = None,
+) -> dict[str, Any]:
     """Run enabled crawlers and return a JSON-serializable execution summary."""
 
     load_dotenv_if_available()
     config = load_config(config_path)
     sheet_service: GoogleSheetsService | None = None
     sheet_enabled_sources: set[str] | None = None
-    if not dry_run:
+    if not dry_run and not export_json:
         sheet_service = GoogleSheetsService.from_env()
         sheet_service.ensure_worksheets()
         try:
@@ -151,8 +158,12 @@ def run_tracker(config_path: str, *, dry_run: bool = False, source_filter: str |
         "errors": [run["error_message"] for run in errors],
     }
 
-    if dry_run:
-        summary["jobs"] = [job.to_dict() for job in filtered_jobs]
+    if dry_run or export_json:
+        if export_json:
+            export_site_data(filtered_jobs, export_json, summary)
+            summary["export_json"] = export_json
+        if dry_run:
+            summary["jobs"] = [job.to_dict() for job in filtered_jobs]
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return summary
 
@@ -182,10 +193,11 @@ def run_tracker(config_path: str, *, dry_run: bool = False, source_filter: str |
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Collect entry-level AI/ML job postings and sync Google Sheets")
+    parser = argparse.ArgumentParser(description="Collect entry-level AI/ML job postings")
     parser.add_argument("--config", default="config.yaml", help="YAML configuration path (default: config.yaml)")
-    parser.add_argument("--dry-run", action="store_true", help="Collect and filter without writing Google Sheets")
+    parser.add_argument("--dry-run", action="store_true", help="Collect and filter without writing persistent output")
     parser.add_argument("--source", help="Run only one source: saramin, jasoseol, jobkorea, jumpit, company_sites")
+    parser.add_argument("--export-json", help="Write filtered jobs to a GitHub Pages JSON file")
     return parser
 
 
@@ -193,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     _setup_logging()
     args = build_parser().parse_args(argv)
     try:
-        run_tracker(args.config, dry_run=args.dry_run, source_filter=args.source)
+        run_tracker(args.config, dry_run=args.dry_run, source_filter=args.source, export_json=args.export_json)
         return 0
     except Exception as exc:
         logger.exception("Tracker run failed: %s", exc)

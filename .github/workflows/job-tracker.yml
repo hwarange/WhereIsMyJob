@@ -1,4 +1,4 @@
-name: AI job tracker
+name: Collect AI job postings
 
 on:
   schedule:
@@ -7,15 +7,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   collect:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,24 +29,28 @@ jobs:
       - name: Install Playwright Chromium
         run: python -m playwright install --with-deps chromium
 
-      - name: Write Google service account credential
+      - name: Collect and export dashboard data
         shell: bash
         env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-        run: |
-          set -euo pipefail
-          credential_file="$RUNNER_TEMP/google-service-account.json"
-          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > "$credential_file"
-          python -c 'import json, sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$credential_file"
-
-      - name: Run tracker
-        shell: bash
-        env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ runner.temp }}/google-service-account.json
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           set -euo pipefail
           cp config.example.yaml config.yaml
-          python job_tracker.py --config config.yaml 2>&1 | tee tracker.log
+          python job_tracker.py --config config.yaml --export-json docs/data/jobs.json 2>&1 | tee tracker.log
+
+      - name: Commit updated jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/data/jobs.json; then
+            echo "No job data changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/jobs.json
+          git commit -m "chore: update job dashboard data"
+          git push
 
       - name: Upload run log on failure
         if: failure()
