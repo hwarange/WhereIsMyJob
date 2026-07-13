@@ -65,7 +65,7 @@ def load_config(path: str | os.PathLike[str]) -> dict[str, Any]:
     result.setdefault("sources", {})
     result.setdefault("notifications", {})
     result["filter"].setdefault("strict_entry_level", False)
-    result["filter"].setdefault("require_bachelor_degree", False)
+    result["filter"].setdefault("allow_bachelor_or_lower", False)
     result["filter"].setdefault("min_score", 6)
     result["filter"].setdefault("rules", copy.deepcopy(DEFAULT_RULES))
     return result

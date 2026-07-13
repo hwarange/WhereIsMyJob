@@ -3,8 +3,8 @@ timezone: Asia/Seoul
 filter:
   # true면 신입/Junior/Entry/경력무관 키워드가 반드시 있어야 합니다.
   strict_entry_level: true
-  # 학사(4년제·대졸↑) 이상을 명시한 공고만 표시합니다.
-  require_bachelor_degree: true
+  # 학력무관·고졸·초대졸·대졸·학사 등 학사 이하도 지원 가능한 공고만 표시합니다.
+  allow_bachelor_or_lower: true
   min_score: 6
   # 생략하면 코드의 기본 규칙을 사용합니다. Search_Rules 시트로 운영 규칙을 관리할 수도 있습니다.
 

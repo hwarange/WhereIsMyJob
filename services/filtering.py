@@ -62,12 +62,12 @@ class JobFilter:
         rules: Iterable[Rule | Mapping[str, Any]] | None = None,
         *,
         strict_entry_level: bool = False,
-        require_bachelor_degree: bool = False,
+        allow_bachelor_or_lower: bool = False,
         min_score: int = 6,
     ) -> None:
         self.rules = [rule if isinstance(rule, Rule) else Rule.from_mapping(rule) for rule in (rules or [])]
         self.strict_entry_level = strict_entry_level
-        self.require_bachelor_degree = require_bachelor_degree
+        self.allow_bachelor_or_lower = allow_bachelor_or_lower
         self.min_score = int(min_score)
         self.entry_keywords = {
             rule.keyword.casefold()
@@ -117,7 +117,7 @@ class JobFilter:
             text = " ".join((job.title, job.position, job.experience, job.raw_text)).casefold()
             if not any(_contains(text, keyword) for keyword in self.entry_keywords):
                 return False
-        if self.require_bachelor_degree and not _has_bachelor_degree(job):
+        if self.allow_bachelor_or_lower and not _allows_bachelor_or_lower(job):
             return False
         return True
 
@@ -125,13 +125,14 @@ class JobFilter:
         return [job for job in jobs if self.include(job)]
 
 
-def _has_bachelor_degree(job: Job) -> bool:
-    """Return true only when a bachelor's-or-higher qualification is explicit."""
+def _allows_bachelor_or_lower(job: Job) -> bool:
+    """Return true when the posting is open to bachelor's-or-lower applicants."""
 
     text = " ".join((job.title, job.position, job.experience, job.raw_text)).casefold()
-    return bool(
-        re.search(
-            r"학사(?:\s*학위|\s*이상)?|4\s*년제|(?<!초)대졸\s*(?:↑|이상)|대학교\s*졸업|석사|박사",
-            text,
-        )
+    is_open_to_bachelor_or_lower = bool(
+        re.search(r"학력\s*무관|고졸|초대졸|(?<!초)대졸|학사|4\s*년제|대학교\s*졸업", text)
     )
+    requires_graduate_degree = bool(
+        re.search(r"(?:석사|박사|대학원)\s*(?:이상|필수|졸업|학위\s*소지|학위자)", text)
+    )
+    return is_open_to_bachelor_or_lower and not requires_graduate_degree
