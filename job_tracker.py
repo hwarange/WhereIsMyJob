@@ -140,6 +140,7 @@ def run_tracker(
     job_filter = JobFilter(
         rules,
         strict_entry_level=enabled(filter_config.get("strict_entry_level", False)),
+        require_bachelor_degree=enabled(filter_config.get("require_bachelor_degree", False)),
         min_score=int(filter_config.get("min_score", 6)),
     )
     filtered_jobs = job_filter.filter_jobs(unique_jobs)

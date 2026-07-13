@@ -57,9 +57,17 @@ def _contains(text: str, keyword: str) -> bool:
 
 
 class JobFilter:
-    def __init__(self, rules: Iterable[Rule | Mapping[str, Any]] | None = None, *, strict_entry_level: bool = False, min_score: int = 6) -> None:
+    def __init__(
+        self,
+        rules: Iterable[Rule | Mapping[str, Any]] | None = None,
+        *,
+        strict_entry_level: bool = False,
+        require_bachelor_degree: bool = False,
+        min_score: int = 6,
+    ) -> None:
         self.rules = [rule if isinstance(rule, Rule) else Rule.from_mapping(rule) for rule in (rules or [])]
         self.strict_entry_level = strict_entry_level
+        self.require_bachelor_degree = require_bachelor_degree
         self.min_score = int(min_score)
         self.entry_keywords = {
             rule.keyword.casefold()
@@ -109,7 +117,21 @@ class JobFilter:
             text = " ".join((job.title, job.position, job.experience, job.raw_text)).casefold()
             if not any(_contains(text, keyword) for keyword in self.entry_keywords):
                 return False
+        if self.require_bachelor_degree and not _has_bachelor_degree(job):
+            return False
         return True
 
     def filter_jobs(self, jobs: Iterable[Job]) -> list[Job]:
         return [job for job in jobs if self.include(job)]
+
+
+def _has_bachelor_degree(job: Job) -> bool:
+    """Return true only when a bachelor's-or-higher qualification is explicit."""
+
+    text = " ".join((job.title, job.position, job.experience, job.raw_text)).casefold()
+    return bool(
+        re.search(
+            r"학사(?:\s*학위|\s*이상)?|4\s*년제|(?<!초)대졸\s*(?:↑|이상)|대학교\s*졸업|석사|박사",
+            text,
+        )
+    )

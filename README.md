@@ -95,7 +95,8 @@ python job_tracker.py --config config.yaml
 
 ```yaml
 filter:
-  strict_entry_level: false
+  strict_entry_level: true
+  require_bachelor_degree: true
   min_score: 6
   rules:
     - {type: include, keyword: "AI Engineer", weight: 5, enabled: true}
@@ -103,7 +104,7 @@ filter:
     - {type: exclude, keyword: "Senior", weight: -10, enabled: true}
 ```
 
-`strict_entry_level: true`이면 신입·Junior·Entry·경력무관 키워드가 없는 공고를 제외합니다. `false`이면 AI/ML 관련성이 충분히 높은 공고를 포함할 수 있습니다. 키워드는 대소문자를 구분하지 않으며, `AI`, `ML`, `PM`, `PO` 같은 짧은 영문 토큰은 단어 단위로만 매칭합니다.
+`strict_entry_level: true`이면 신입·Junior·Entry·경력무관 키워드가 없는 공고를 제외합니다. `require_bachelor_degree: true`이면 학사·4년제·대졸↑·석사·박사가 명시된 공고만 표시하며, 학력무관·초대졸 공고는 제외합니다. 키워드는 대소문자를 구분하지 않으며, `AI`, `ML`, `PM`, `PO` 같은 짧은 영문 토큰은 단어 단위로만 매칭합니다.
 
 ## GitHub Actions와 Pages 배포
 

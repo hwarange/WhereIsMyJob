@@ -45,6 +45,22 @@ def test_filter_rejects_non_ai_role_with_ai_only_in_context():
     assert tracker_filter.filter_jobs([job]) == []
 
 
+def test_filter_requires_explicit_bachelor_degree():
+    tracker_filter = JobFilter(
+        [
+            {"type": "include", "keyword": "AI", "weight": 3, "enabled": True},
+            {"type": "include", "keyword": "신입", "weight": 5, "enabled": True},
+        ],
+        strict_entry_level=True,
+        require_bachelor_degree=True,
+        min_score=6,
+    )
+    bachelor = Job(title="AI 엔지니어 신입", raw_text="대졸↑ 정규직")
+    associate = Job(title="AI 엔지니어 신입", raw_text="초대졸↑ 정규직")
+    unrestricted = Job(title="AI 엔지니어 신입", raw_text="학력무관 정규직")
+    assert tracker_filter.filter_jobs([bachelor, associate, unrestricted]) == [bachelor]
+
+
 def test_site_export_preserves_existing_management_fields(tmp_path):
     path = tmp_path / "jobs.json"
     job = Job(source="test", title="AI Engineer", job_key="abc")
