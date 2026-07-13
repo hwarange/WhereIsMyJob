@@ -1,8 +1,10 @@
 import json
+from urllib.parse import urlsplit
 
 from crawlers.base import Job, extract_job_detail_records, json_ld_to_jobs
 from crawlers.saramin import SaraminCrawler
 from crawlers.jumpit import JumpitCrawler
+from crawlers.jasoseol import JasoseolCrawler
 from services.dedupe import build_job_key, dedupe_jobs, normalize_url
 from services.filtering import JobFilter
 from services.site_data import export_site_data
@@ -117,3 +119,8 @@ def test_jumpit_detail_enrichment_exposes_education_requirement():
     # page content is preserved rather than relying on listing-card text.
     from bs4 import BeautifulSoup
     assert "학사 이상" in BeautifulSoup(html, "html.parser").get_text(" ")
+
+
+def test_jasoseol_recruit_board_is_not_given_a_keyword_query():
+    crawler = JasoseolCrawler({"url": "https://jasoseol.com/recruit", "keywords": ["AI"]})
+    assert urlsplit(crawler.settings["url"]).path == "/recruit"

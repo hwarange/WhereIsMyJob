@@ -26,8 +26,13 @@ class JasoseolCrawler(BaseCrawler):
         base_url = self.settings.get("url", "https://jasoseol.com/search")
         keywords = self.settings.get("keywords") or ["AI", "머신러닝", "LLM"]
         jobs: list[Job] = []
-        for keyword in keywords:
-            url = _with_query(base_url, {self.settings.get("query_param", "keyword"): keyword})
+        # The public /recruit board does not support the old keyword query
+        # parameter.  Read its rendered listing once, then apply our shared
+        # AI/ML filter to the returned public job cards.
+        urls = [base_url] if urlsplit(base_url).path.rstrip("/") == "/recruit" else [
+            _with_query(base_url, {self.settings.get("query_param", "keyword"): keyword}) for keyword in keywords
+        ]
+        for url in urls:
             try:
                 html = self.fetch_html(url, prefer_playwright=True)
                 jobs.extend(json_ld_to_jobs(html, url, self.source))
@@ -37,5 +42,5 @@ class JasoseolCrawler(BaseCrawler):
                     )
                 )
             except Exception as exc:
-                logger.exception("jasoseol collection failed for keyword %r: %s", keyword, exc)
+                logger.exception("jasoseol collection failed for %s: %s", url, exc)
         return jobs

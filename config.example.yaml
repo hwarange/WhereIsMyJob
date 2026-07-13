@@ -26,8 +26,10 @@ sources:
 
   jasoseol:
     enabled: true
-    url: https://jasoseol.com/search
+    # 공개 채용 목록. 동적 공고 카드가 렌더링된 뒤 상세 링크만 추출합니다.
+    url: https://jasoseol.com/recruit
     use_playwright: true
+    render_wait_ms: 5000
     keywords:
       - AI
       - 머신러닝
