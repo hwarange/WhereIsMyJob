@@ -3,6 +3,7 @@
 config.yaml
 *.json
 !package.json
+!docs/data/jobs.json
 
 # Python
 __pycache__/
