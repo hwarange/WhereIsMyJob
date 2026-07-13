@@ -1,6 +1,6 @@
 import json
 
-from crawlers.base import Job
+from crawlers.base import Job, extract_job_detail_records, json_ld_to_jobs
 from services.dedupe import build_job_key, dedupe_jobs, normalize_url
 from services.filtering import JobFilter
 from services.site_data import export_site_data
@@ -42,3 +42,23 @@ def test_site_export_preserves_existing_management_fields(tmp_path):
     payload = export_site_data([job], path)
     assert payload["jobs"][0]["status"] == "지원완료"
     assert payload["jobs"][0]["memo"] == "포트폴리오 제출"
+
+
+def test_detail_link_extractor_rejects_menu_and_social_links():
+    html = """
+    <a href="/Recruit/GI_Read/123">AI Engineer 신입</a>
+    <a href="/Recruit">채용 안내</a>
+    <a href="https://youtube.com/@company">Company YouTube</a>
+    """
+    jobs = extract_job_detail_records(
+        html,
+        "https://www.jobkorea.co.kr/Search/",
+        "jobkorea",
+        detail_url_pattern=r"/Recruit/GI_Read/(?P<id>\d+)",
+    )
+    assert [(job.source_job_id, job.title) for job in jobs] == [("123", "AI Engineer 신입")]
+
+
+def test_json_ld_requires_job_posting_type():
+    html = '<script type="application/ld+json">{"@type":"Organization","title":"채용 안내"}</script>'
+    assert json_ld_to_jobs(html, "https://example.com", "company_sites") == []

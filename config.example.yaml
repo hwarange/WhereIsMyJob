@@ -2,14 +2,14 @@ timezone: Asia/Seoul
 
 filter:
   # true면 신입/Junior/Entry/경력무관 키워드가 반드시 있어야 합니다.
-  strict_entry_level: false
+  strict_entry_level: true
   min_score: 6
   # 생략하면 코드의 기본 규칙을 사용합니다. Search_Rules 시트로 운영 규칙을 관리할 수도 있습니다.
 
 sources:
   saramin_api:
-    # 사용하지 않으므로 기본 비활성화. 필요할 때만 true로 변경합니다.
-    enabled: false
+    # 사람인 공식 API 키(SARAMIN_ACCESS_KEY)를 등록한 경우에만 수집됩니다.
+    enabled: true
     url: https://oapi.saramin.co.kr/job-search
     count_per_keyword: 50
     keywords:
@@ -23,7 +23,8 @@ sources:
       - "Data Scientist 신입"
 
   jasoseol:
-    enabled: true
+    # 현재 공개 검색 페이지가 자동 수집 요청을 허용하지 않아 비활성화합니다.
+    enabled: false
     url: https://jasoseol.com/search
     use_playwright: true
     keywords:
@@ -35,8 +36,9 @@ sources:
     request_delay_sec: 1.5
 
   jobkorea:
-    enabled: true
-    url: https://www.jobkorea.co.kr/
+    # robots.txt가 검색 결과 수집을 허용하지 않아 비활성화합니다.
+    enabled: false
+    url: https://www.jobkorea.co.kr/Search/
     use_playwright: false
     keywords:
       - "AI Engineer 신입"
@@ -46,9 +48,11 @@ sources:
     request_delay_sec: 1.5
 
   jumpit:
-    enabled: true
-    url: https://jumpit.saramin.co.kr/
+    # 공개 페이지의 상세 공고 식별 방식을 검증하기 전까지 비활성화합니다.
+    enabled: false
+    url: https://jumpit.saramin.co.kr/positions
     use_playwright: true
+    render_wait_ms: 3000
     keywords:
       - AI
       - ML
@@ -58,7 +62,9 @@ sources:
     request_delay_sec: 1.5
 
   company_sites:
-    enabled: true
+    # 기업별 상세공고 URL 패턴을 검증하기 전에는 비활성화합니다.
+    # 일반 메뉴/유튜브/FAQ 링크가 공고로 섞이는 일을 막기 위한 안전 설정입니다.
+    enabled: false
     # true면 Google Sheets의 Company_Targets가 config targets보다 우선합니다.
     from_sheet: true
     use_playwright: true

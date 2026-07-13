@@ -6,7 +6,7 @@ import logging
 from typing import Any, Mapping
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
-from .base import BaseCrawler, Job, extract_link_records, json_ld_to_jobs
+from .base import BaseCrawler, Job, extract_job_detail_records, json_ld_to_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,11 @@ class JasoseolCrawler(BaseCrawler):
             try:
                 html = self.fetch_html(url, prefer_playwright=True)
                 jobs.extend(json_ld_to_jobs(html, url, self.source))
-                jobs.extend(extract_link_records(html, url, self.source))
+                jobs.extend(
+                    extract_job_detail_records(
+                        html, url, self.source, detail_url_pattern=r"/recruit/(?P<id>\d+)(?:/|$)"
+                    )
+                )
             except Exception as exc:
                 logger.exception("jasoseol collection failed for keyword %r: %s", keyword, exc)
         return jobs

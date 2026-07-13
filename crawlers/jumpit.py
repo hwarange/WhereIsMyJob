@@ -6,7 +6,7 @@ import logging
 from typing import Any, Mapping
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
-from .base import BaseCrawler, Job, extract_link_records, json_ld_to_jobs
+from .base import BaseCrawler, Job, extract_job_detail_records, json_ld_to_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class JumpitCrawler(BaseCrawler):
         return urlunsplit((parts.scheme, parts.netloc, parts.path, existing + urlencode(query), parts.fragment))
 
     def collect(self) -> list[Job]:
-        base_url = self.settings.get("url", "https://jumpit.saramin.co.kr/")
+        base_url = self.settings.get("url", "https://jumpit.saramin.co.kr/positions")
         keywords = self.settings.get("keywords") or ["AI", "ML", "LLM"]
         jobs: list[Job] = []
         for keyword in keywords:
@@ -30,7 +30,11 @@ class JumpitCrawler(BaseCrawler):
             try:
                 html = self.fetch_html(url, prefer_playwright=bool(self.settings.get("use_playwright", True)))
                 jobs.extend(json_ld_to_jobs(html, url, self.source))
-                jobs.extend(extract_link_records(html, url, self.source))
+                jobs.extend(
+                    extract_job_detail_records(
+                        html, url, self.source, detail_url_pattern=r"/position/(?P<id>[A-Za-z0-9_-]+)(?:/|$)"
+                    )
+                )
             except Exception as exc:
                 logger.exception("jumpit collection failed for keyword %r: %s", keyword, exc)
         return jobs

@@ -11,7 +11,7 @@ import logging
 from typing import Any, Iterable, Mapping
 from urllib.parse import urlparse
 
-from .base import BaseCrawler, Job, extract_link_records, json_ld_to_jobs
+from .base import BaseCrawler, Job, extract_job_detail_records, json_ld_to_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +38,22 @@ class CompanySitesCrawler(BaseCrawler):
                 continue
             try:
                 html = self.fetch_html(url, prefer_playwright=bool(self.settings.get("use_playwright", True)))
+                # A corporate landing page is not a job board.  Use schema.org
+                # JobPosting data, or a deliberately configured job-detail URL
+                # pattern; never treat every navigation/social link as a job.
                 page_jobs = json_ld_to_jobs(html, url, self.source)
-                page_jobs.extend(extract_link_records(html, url, self.source))
+                detail_pattern = str(target.get("detail_url_pattern", "")).strip()
+                if detail_pattern:
+                    page_jobs.extend(
+                        extract_job_detail_records(
+                            html, url, self.source, detail_url_pattern=detail_pattern
+                        )
+                    )
                 for job in page_jobs:
                     if not job.company:
                         job.company = company
                     if not job.source_job_id:
                         job.source_job_id = hashlib.sha256(job.url.encode("utf-8")).hexdigest()[:20]
-                    job.raw_text = f"{job.raw_text} {target.get('query_hint', '')}".strip()
                     jobs.append(job)
             except Exception as exc:
                 logger.exception("company site collection failed for %s (%s): %s", company, url, exc)

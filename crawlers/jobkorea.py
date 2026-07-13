@@ -6,7 +6,7 @@ import logging
 from typing import Any, Mapping
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
-from .base import BaseCrawler, Job, extract_link_records, json_ld_to_jobs
+from .base import BaseCrawler, Job, extract_job_detail_records, json_ld_to_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class JobKoreaCrawler(BaseCrawler):
         return urlunsplit((parts.scheme, parts.netloc, parts.path, existing + urlencode(query), parts.fragment))
 
     def collect(self) -> list[Job]:
-        base_url = self.settings.get("url", "https://www.jobkorea.co.kr/")
+        base_url = self.settings.get("url", "https://www.jobkorea.co.kr/Search/")
         keywords = self.settings.get("keywords") or ["AI Engineer 신입"]
         jobs: list[Job] = []
         for keyword in keywords:
@@ -30,7 +30,11 @@ class JobKoreaCrawler(BaseCrawler):
             try:
                 html = self.fetch_html(url, prefer_playwright=bool(self.settings.get("use_playwright", False)))
                 jobs.extend(json_ld_to_jobs(html, url, self.source))
-                jobs.extend(extract_link_records(html, url, self.source))
+                jobs.extend(
+                    extract_job_detail_records(
+                        html, url, self.source, detail_url_pattern=r"/Recruit/GI_Read/(?P<id>\d+)"
+                    )
+                )
             except Exception as exc:
                 logger.exception("jobkorea collection failed for keyword %r: %s", keyword, exc)
         return jobs

@@ -210,6 +210,10 @@ class BaseCrawler:
             try:
                 page = browser.new_page(user_agent=self.user_agent)
                 page.goto(url, wait_until="domcontentloaded", timeout=int(self.timeout * 1000))
+                # Search pages often render their result cards just after the
+                # initial document.  A bounded wait is enough to capture those
+                # cards without attempting to evade access controls.
+                page.wait_for_timeout(int(self.settings.get("render_wait_ms", 1500)))
                 return page.content()
             finally:
                 browser.close()
@@ -246,13 +250,36 @@ def parse_json_ld(html: str) -> list[Mapping[str, Any]]:
         for item in values:
             if not isinstance(item, Mapping):
                 continue
-            if item.get("@type") == "JobPosting" or "title" in item:
+            item_type = item.get("@type")
+            types = item_type if isinstance(item_type, list) else [item_type]
+            if any(str(value).casefold() == "jobposting" for value in types):
                 found.append(item)
     return found
 
 
 def extract_link_records(html: str, base_url: str, source: str) -> list[Job]:
-    """Best-effort fallback parser for sites whose CSS structure changes often."""
+    """Deprecated broad parser kept for backwards compatibility.
+
+    New collectors must use :func:`extract_job_detail_records`.  Parsing every
+    link on a career page treats menus, social links, and help pages as jobs.
+    """
+
+    return extract_job_detail_records(
+        html,
+        base_url,
+        source,
+        detail_url_pattern=r"/(?:recruit|position|job)[^?#]*(?:\d|detail|read)",
+    )
+
+
+def extract_job_detail_records(
+    html: str,
+    base_url: str,
+    source: str,
+    *,
+    detail_url_pattern: str,
+) -> list[Job]:
+    """Extract only links that match a source's known job-detail URL format."""
 
     try:
         from bs4 import BeautifulSoup
@@ -260,28 +287,31 @@ def extract_link_records(html: str, base_url: str, source: str) -> list[Job]:
         raise CrawlerError("beautifulsoup4 is required for HTML crawlers") from exc
 
     soup = BeautifulSoup(html, "html.parser")
+    pattern = re.compile(detail_url_pattern, re.IGNORECASE)
+    source_host = urlparse(base_url).netloc.lower()
     jobs: list[Job] = []
     seen_urls: set[str] = set()
     for anchor in soup.select("a[href]"):
         href = urljoin(base_url, anchor.get("href", ""))
         text = clean_text(anchor.get_text(" ", strip=True))
-        if not href.startswith(("http://", "https://")) or not text:
+        parsed = urlparse(href)
+        if not href.startswith(("http://", "https://")) or not text or parsed.netloc.lower() != source_host:
             continue
-        lower_href = href.lower()
-        if href in seen_urls or any(part in lower_href for part in ("login", "signup", "javascript:")):
+        if href in seen_urls or not pattern.search(parsed.path):
             continue
-        parent = anchor.find_parent(["article", "li", "div", "section"]) or anchor.parent
+        if text.casefold() in {"자세히 보기", "상세 보기", "지원하기", "more", "view"}:
+            continue
+        parent = anchor.find_parent(["article", "li"]) or anchor.parent
         context = clean_text(parent.get_text(" ", strip=True) if parent else text)
-        if len(text) < 2 or len(context) < 2:
+        if len(text) < 4 or len(context) < 4:
             continue
-        if not any(token in lower_href for token in ("job", "recruit", "career", "position", "hire", "apply", "detail")):
-            # A job title link on a search result often has no useful URL token.
-            if len(text) > 80:
-                continue
+        match = pattern.search(parsed.path)
+        source_job_id = match.groupdict().get("id", "") if match else ""
         seen_urls.add(href)
         jobs.append(
             Job(
                 source=source,
+                source_job_id=source_job_id,
                 company="",
                 title=text,
                 position=text,
