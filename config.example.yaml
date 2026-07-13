@@ -88,6 +88,11 @@ sources:
         enabled: true
         url: https://talent.hyundai.com/
         query_hint: AI 신입
+      - company: 현대오토에버
+        enabled: true
+        # 공개 채용 목록만 확인합니다. 개별 지원/상세 경로는 robots.txt가 금지합니다.
+        url: https://career.hyundai-autoever.com/ko/apply
+        query_hint: AI 신입
       - company: 네이버
         enabled: true
         url: https://recruit.navercorp.com/
