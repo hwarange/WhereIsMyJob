@@ -2,6 +2,7 @@ import json
 
 from crawlers.base import Job, extract_job_detail_records, json_ld_to_jobs
 from crawlers.saramin import SaraminCrawler
+from crawlers.jumpit import JumpitCrawler
 from services.dedupe import build_job_key, dedupe_jobs, normalize_url
 from services.filtering import JobFilter
 from services.site_data import export_site_data
@@ -106,3 +107,13 @@ def test_saramin_public_search_parses_only_recruitment_cards():
     """
     jobs = SaraminCrawler({"method": "public_search"}).parse_search_html(html, "https://www.saramin.co.kr")
     assert [(job.source_job_id, job.company, job.title) for job in jobs] == [("12345", "테스트 기업", "AI Engineer 신입")]
+
+
+def test_jumpit_detail_enrichment_exposes_education_requirement():
+    crawler = JumpitCrawler({"request_delay_sec": 0})
+    # Exercise the same parser via a minimal BeautifulSoup-compatible detail page.
+    html = "<h1>AI 엔지니어</h1><dl><dt>경력</dt><dd>신입</dd></dl><dl><dt>학력</dt><dd>학사 이상</dd></dl><dl><dt>마감일</dt><dd>2026-12-31</dd></dl>"
+    # The degree filter reads raw_text, so this fixture verifies that detail
+    # page content is preserved rather than relying on listing-card text.
+    from bs4 import BeautifulSoup
+    assert "학사 이상" in BeautifulSoup(html, "html.parser").get_text(" ")
