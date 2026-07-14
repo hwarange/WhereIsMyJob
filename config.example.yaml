@@ -26,11 +26,10 @@ sources:
 
   jasoseol:
     enabled: true
-    # 공개 채용 목록. 동적 공고 카드가 렌더링된 뒤 상세 링크만 추출합니다.
-    url: https://jasoseol.com/recruit
+    # 검색 결과는 회사·직무·고용형태·마감일을 서버에서 바로 제공합니다.
+    url: https://jasoseol.com/search
     use_playwright: true
-    render_wait_ms: 5000
-    # 목록에는 회사명만 있어 상세 페이지의 '모집 직무'를 직무별 공고로 분리합니다.
+    # 검색 카드의 상세 페이지에서 학력 조건과 개별 모집 직무를 확인합니다.
     detail_fetch_limit: 40
     keywords:
       - AI

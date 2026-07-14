@@ -1,9 +1,8 @@
-"""Source-specific collector for the public Jasoseol recruitment board.
+"""Source-specific collector for the public Jasoseol search results.
 
-Jasoseol's board links to a company-level posting, while the actual positions
-and entry-level labels are rendered on the posting detail page.  This adapter
-therefore collects only known ``/recruit/<id>`` links and expands each detail
-page into one normalized record per recruiting position.
+The search page server-renders company, title, role, employment type, closing
+date, and a known detail URL.  Detail pages are read only to add an education
+requirement or split a combined posting into individual roles.
 """
 
 from __future__ import annotations
@@ -18,7 +17,6 @@ from .base import BaseCrawler, CrawlerError, Job, clean_text
 logger = logging.getLogger(__name__)
 
 _DETAIL_PATH = re.compile(r"^/recruit/(?P<id>\d+)/?$")
-_STATUS_PREFIX = re.compile(r"^(?:시작|마감|수시|진행중?)\s*")
 _APPLICANT_SUFFIX = re.compile(r"\s*\d+[,.]?\d*명\s*작성\s*$")
 _ROLE_PREFIX = re.compile(r"^(?P<experience>신입(?:\s*/\s*인턴)?|인턴|경력|경력무관)\s+(?P<role>.+)$")
 
@@ -28,14 +26,22 @@ class JasoseolCrawler(BaseCrawler):
         super().__init__("jasoseol", settings, session)
 
     def collect(self) -> list[Job]:
-        board_url = self.settings.get("url", "https://jasoseol.com/recruit")
+        search_url = self.settings.get("url", "https://jasoseol.com/search")
         try:
-            board_html = self.fetch_html(board_url, prefer_playwright=True)
+            # The public page server-renders the cards, but rejects ordinary
+            # HTTP clients.  Render the same public page in Chromium first;
+            # ``fetch_html`` falls back to the declared HTTP client only when
+            # rendering itself is unavailable.
+            search_html = self.fetch_html(search_url, prefer_playwright=True)
         except Exception as exc:
-            logger.exception("jasoseol board collection failed for %s: %s", board_url, exc)
+            logger.exception("jasoseol search collection failed for %s: %s", search_url, exc)
             return []
 
-        listings = self.parse_recruit_board(board_html, board_url)
+        listings = self.parse_search_html(search_html, search_url)
+        if not listings:
+            logger.warning(
+                "jasoseol search returned no public result cards; the site may be declining the declared crawler"
+            )
         limit = int(self.settings.get("detail_fetch_limit", 40))
         jobs: list[Job] = []
         for listing in listings[:limit]:
@@ -44,10 +50,16 @@ class JasoseolCrawler(BaseCrawler):
                 jobs.extend(self.parse_recruit_detail(detail_html, listing))
             except Exception as exc:
                 logger.warning("jasoseol detail collection failed for %s: %s", listing.url, exc)
+                jobs.append(listing)
         return jobs
 
-    def parse_recruit_board(self, html: str, board_url: str) -> list[Job]:
-        """Read only the public recruitment-detail links from the board."""
+    def parse_search_html(self, html: str, search_url: str) -> list[Job]:
+        """Parse the server-rendered cards on ``/search``.
+
+        The ``EmploymentCompanyCard`` component is the public search-result
+        contract.  Restricting extraction to it avoids menus, recommended
+        links, and calendar items being mistaken for job postings.
+        """
 
         try:
             from bs4 import BeautifulSoup
@@ -55,28 +67,48 @@ class JasoseolCrawler(BaseCrawler):
             raise CrawlerError("beautifulsoup4 is required for Jasoseol collection") from exc
 
         soup = BeautifulSoup(html, "html.parser")
-        host = urlparse(board_url).netloc.lower()
+        host = urlparse(search_url).netloc.lower()
         listings: list[Job] = []
         seen: set[str] = set()
-        for anchor in soup.select("a[href]"):
-            url = urljoin(board_url, anchor.get("href", ""))
+        cards = soup.select('a[data-sentry-component="EmploymentCompanyCard"][href]')
+        for anchor in cards:
+            url = urljoin(search_url, anchor.get("href", ""))
             parsed = urlparse(url)
             match = _DETAIL_PATH.fullmatch(parsed.path)
             if not match or parsed.netloc.lower() != host or url in seen:
                 continue
-            company = _STATUS_PREFIX.sub("", clean_text(anchor.get_text(" ", strip=True)))
-            if not company:
+            company_element = anchor.find("h5")
+            title_element = anchor.find("h4")
+            role_element = next(
+                (
+                    element
+                    for element in anchor.find_all("div")
+                    if "line-clamp" in " ".join(element.get("class", []))
+                ),
+                None,
+            )
+            company = clean_text(company_element.get_text(" ", strip=True) if company_element else "")
+            title = clean_text(title_element.get_text(" ", strip=True) if title_element else "")
+            position = clean_text(role_element.get_text(" ", strip=True) if role_element else "")
+            if not company or not title:
                 continue
             seen.add(url)
-            parent = anchor.find_parent("li") or anchor.parent
-            context = clean_text(parent.get_text(" ", strip=True) if parent else company)
+            employment = anchor.select_one('[data-sentry-component="CompanyEmploymentType"]')
+            employment_parts = [clean_text(part.get_text(" ", strip=True)) for part in employment.select("span")]
+            employment_parts = [part for part in employment_parts if part]
+            period = anchor.select_one('[data-sentry-component="EmploymentPeriod"]')
+            deadline = clean_text(period.get_text(" ", strip=True) if period else "")
+            context = clean_text(anchor.get_text(" ", strip=True))
             listings.append(
                 self.make_job(
                     source_job_id=match.group("id"),
                     company=company,
-                    title=company,
-                    position=company,
+                    title=title,
+                    position=position or title,
                     url=url,
+                    deadline=deadline,
+                    experience=employment_parts[1] if len(employment_parts) > 1 else "",
+                    employment_type=employment_parts[1] if len(employment_parts) > 1 else "",
                     raw_text=context,
                 )
             )
@@ -118,9 +150,12 @@ class JasoseolCrawler(BaseCrawler):
                     source_job_id=listing.source_job_id,
                     company=company,
                     title=posting_title or listing.title,
-                    position=posting_title or listing.position,
+                    position=listing.position,
                     url=listing.url,
-                    raw_text=page_text,
+                    deadline=listing.deadline,
+                    experience=listing.experience,
+                    employment_type=listing.employment_type,
+                    raw_text=clean_text(f"{listing.raw_text} {page_text}"),
                 )
             ]
 
@@ -148,9 +183,12 @@ class JasoseolCrawler(BaseCrawler):
                 source_job_id=listing.source_job_id,
                 company=company,
                 title=posting_title or listing.title,
-                position=posting_title or listing.position,
+                position=listing.position,
                 url=listing.url,
-                raw_text=page_text,
+                deadline=listing.deadline,
+                experience=listing.experience,
+                employment_type=listing.employment_type,
+                raw_text=clean_text(f"{listing.raw_text} {page_text}"),
             )
         ]
 

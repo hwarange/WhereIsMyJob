@@ -121,15 +121,25 @@ def test_jumpit_detail_enrichment_exposes_education_requirement():
     assert "학사 이상" in BeautifulSoup(html, "html.parser").get_text(" ")
 
 
-def test_jasoseol_recruit_board_is_not_given_a_keyword_query():
-    crawler = JasoseolCrawler({"url": "https://jasoseol.com/recruit", "keywords": ["AI"]})
-    assert urlsplit(crawler.settings["url"]).path == "/recruit"
+def test_jasoseol_search_page_is_used_as_the_listing_source():
+    crawler = JasoseolCrawler({"url": "https://jasoseol.com/search", "keywords": ["AI"]})
+    assert urlsplit(crawler.settings["url"]).path == "/search"
 
 
 def test_jasoseol_parses_board_links_and_expands_detail_roles():
     crawler = JasoseolCrawler({"request_delay_sec": 0})
-    board = '<a href="/recruit/104845">시작 파수에이아이</a><a href="/calendar">채용달력</a>'
-    listing = crawler.parse_recruit_board(board, "https://jasoseol.com/recruit")[0]
+    search = """
+    <a data-sentry-component="EmploymentCompanyCard" href="/recruit/104845">
+      <h5>파수에이아이</h5><h4>2026년 2차 신입 공개 채용</h4>
+      <div class="line-clamp-1">AI컨설턴트, 인공지능 딥러닝</div>
+      <div data-sentry-component="CompanyEmploymentType"><span>중견기업</span><span>신입</span></div>
+      <div data-sentry-component="EmploymentPeriod">2026년 7월 1일 ~ 2026년 7월 20일</div>
+    </a><a href="/calendar">채용달력</a>
+    """
+    listing = crawler.parse_search_html(search, "https://jasoseol.com/search")[0]
+    assert (listing.company, listing.title, listing.position, listing.experience) == (
+        "파수에이아이", "2026년 2차 신입 공개 채용", "AI컨설턴트, 인공지능 딥러닝", "신입"
+    )
     detail = """
     <main>
       <h2>파수에이아이</h2><h1>2026년 2차 신입 공개 채용</h1>
