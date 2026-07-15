@@ -68,18 +68,18 @@ sources:
     request_delay_sec: 1.5
 
   wanted:
-    # 원티드 회사 페이지의 공개 '채용중인 포지션' 목록만 수집합니다.
+    # 원티드 전체 공개 채용 목록을 수집한 뒤, 공통 키워드 필터로 AI/ML·신입
+    # 공고만 남깁니다. 로그인·지원·비공개 정보에는 접근하지 않습니다.
     enabled: true
+    method: public_listings
+    url: https://www.wanted.co.kr/wdlist
     use_playwright: true
     render_wait_ms: 1500
     request_delay_sec: 2.0
-    # 초기 미리보기 뒤의 'N개 포지션 더보기'를 눌러 전체 공개 목록을 읽습니다.
-    expand_positions: true
-    max_expand_clicks: 3
-    targets:
-      - company: 업스테이지
-        enabled: true
-        url: https://www.wanted.co.kr/company/16049
+    # 무한 스크롤 목록에서 읽을 최대 카드 수와 스크롤 횟수입니다.
+    listing_fetch_limit: 300
+    max_scrolls: 25
+    scroll_wait_ms: 500
 
   company_sites:
     # 일반 메뉴/유튜브/FAQ 링크는 수집하지 않고, JobPosting 데이터 또는

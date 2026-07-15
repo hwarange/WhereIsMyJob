@@ -1,8 +1,8 @@
-"""Collector for public Wanted company-position listings.
+"""Collector for public Wanted position listings.
 
-Wanted company pages expose a company's currently open positions as public
-``/wd/<position-id>`` links. This crawler only reads that listing; it does
-not sign in, apply to positions, or access private data.
+The crawler can read either configured company pages or a bounded slice of
+Wanted's public all-positions page. It never signs in, applies to positions,
+or accesses private data.
 """
 
 from __future__ import annotations
@@ -18,10 +18,11 @@ logger = logging.getLogger(__name__)
 
 _POSITION_PATH = re.compile(r"^/wd/(?P<id>\d+)/?$")
 _EXPERIENCE_TEXT = re.compile(r"(?:신입|경력|인턴|무관)")
+_PUBLIC_LISTING_URL = "https://www.wanted.co.kr/wdlist"
 
 
 class WantedCrawler(BaseCrawler):
-    """Collect public position cards from configured Wanted company pages."""
+    """Collect public Wanted position cards."""
 
     default_target = {
         "company": "업스테이지",
@@ -39,6 +40,13 @@ class WantedCrawler(BaseCrawler):
         self.targets = list(configured_targets or [self.default_target])
 
     def collect(self) -> list[Job]:
+        method = clean_text(self.settings.get("method", "company_targets")).lower()
+        if method in {"public_listings", "public_listing", "listing"}:
+            return self._collect_public_listings()
+        if method not in {"company_targets", "company_target", "company"}:
+            logger.warning("wanted: unsupported collection method %r", method)
+            return []
+
         jobs: list[Job] = []
         for target in self.targets:
             if not isinstance(target, Mapping) or not self._enabled(target.get("enabled", True)):
@@ -56,8 +64,28 @@ class WantedCrawler(BaseCrawler):
                 logger.exception("wanted collection failed for %s (%s): %s", company or "(unknown)", url, exc)
         return jobs
 
+    def _collect_public_listings(self) -> list[Job]:
+        """Collect a bounded portion of the public all-positions page.
+
+        Keyword relevance is deliberately handled by the shared ``JobFilter``
+        so Wanted and the other sources use one consistent set of rules.
+        """
+
+        url = clean_text(self.settings.get("url", _PUBLIC_LISTING_URL))
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or parsed.netloc.lower() not in {"wanted.co.kr", "www.wanted.co.kr"}:
+            logger.warning("wanted: invalid public listing URL %s", url or "(empty)")
+            return []
+        try:
+            html = self.fetch_html(url, prefer_playwright=True)
+            limit = int(self.settings.get("listing_fetch_limit", 300))
+            return self.parse_listing_html(html, url, limit=limit)
+        except Exception as exc:
+            logger.exception("wanted public listing collection failed for %s: %s", url, exc)
+            return []
+
     def render_with_playwright(self, url: str) -> str:
-        """Render a public company page and reveal its bounded position list."""
+        """Render a public company or all-positions page."""
 
         if not self.allowed_by_robots(url):
             raise CrawlerError(f"robots.txt disallows collection: {url}")
@@ -72,6 +100,9 @@ class WantedCrawler(BaseCrawler):
                 page = browser.new_page(user_agent=self.user_agent)
                 page.goto(url, wait_until="domcontentloaded", timeout=int(self.timeout * 1000))
                 page.wait_for_timeout(int(self.settings.get("render_wait_ms", 1500)))
+                method = clean_text(self.settings.get("method", "company_targets")).lower()
+                if method in {"public_listings", "public_listing", "listing"}:
+                    return self._render_public_listings(page)
                 # Company pages initially show a preview. Expand the public
                 # "N개 포지션 더보기" control a bounded number of times.
                 if self._enabled(self.settings.get("expand_positions", True)):
@@ -84,6 +115,25 @@ class WantedCrawler(BaseCrawler):
                 return page.content()
             finally:
                 browser.close()
+
+    def _render_public_listings(self, page: Any) -> str:
+        """Reveal a bounded number of cards from Wanted's public listing."""
+
+        limit = max(1, int(self.settings.get("listing_fetch_limit", 300)))
+        max_scrolls = max(0, int(self.settings.get("max_scrolls", 25)))
+        cards = page.locator('a[href^="/wd/"]')
+        unchanged_scrolls = 0
+        for _ in range(max_scrolls):
+            before = cards.count()
+            if before >= limit:
+                break
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(int(self.settings.get("scroll_wait_ms", 500)))
+            after = cards.count()
+            unchanged_scrolls = unchanged_scrolls + 1 if after <= before else 0
+            if unchanged_scrolls >= 2:
+                break
+        return page.content()
 
     def parse_company_html(self, html: str, page_url: str, company_override: str = "") -> list[Job]:
         """Parse only Wanted position-card links from one company page."""
@@ -127,6 +177,60 @@ class WantedCrawler(BaseCrawler):
                     location=location,
                     url=url,
                     deadline=deadline,
+                    experience=experience,
+                    employment_type=clean_text(position_data.get("data-position-employment-type")),
+                    raw_text=clean_text(anchor.get_text(" ", strip=True)),
+                )
+            )
+        return jobs
+
+    def parse_listing_html(self, html: str, page_url: str, *, limit: int = 300) -> list[Job]:
+        """Parse public all-positions cards without treating navigation as jobs."""
+
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError as exc:  # pragma: no cover - dependency install issue
+            raise CrawlerError("beautifulsoup4 is required for Wanted collection") from exc
+
+        soup = BeautifulSoup(html, "html.parser")
+        page_host = urlparse(page_url).netloc.lower()
+        jobs: list[Job] = []
+        seen_urls: set[str] = set()
+        for anchor in soup.select("a[href]"):
+            if len(jobs) >= max(1, limit):
+                break
+            url = urljoin(page_url, str(anchor.get("href", "")))
+            parsed = urlparse(url)
+            match = _POSITION_PATH.fullmatch(parsed.path)
+            if not match or parsed.netloc.lower() != page_host or url in seen_urls:
+                continue
+            position_data = anchor.select_one("[data-position-id]")
+            if position_data is None or clean_text(position_data.get("data-position-id")) != match.group("id"):
+                continue
+            title = first_non_empty(position_data.get("data-position-name"), anchor.get("title"))
+            company = clean_text(position_data.get("data-company-name"))
+            if not title or not company:
+                continue
+            lines = [clean_text(line) for line in anchor.get_text("\n", strip=True).splitlines()]
+            lines = [line for line in lines if line]
+            details = lines[lines.index(company) + 1 :] if company in lines else []
+            location, experience = "", ""
+            if details:
+                location_and_experience = details[-1]
+                if " · " in location_and_experience:
+                    location, experience = (clean_text(part) for part in location_and_experience.split(" · ", 1))
+                else:
+                    experience = next((line for line in details if _EXPERIENCE_TEXT.search(line)), "")
+                    location = details[0] if details and details[0] != experience else ""
+            seen_urls.add(url)
+            jobs.append(
+                self.make_job(
+                    source_job_id=match.group("id"),
+                    company=company,
+                    title=title,
+                    position=title,
+                    location=location,
+                    url=url,
                     experience=experience,
                     employment_type=clean_text(position_data.get("data-position-employment-type")),
                     raw_text=clean_text(anchor.get_text(" ", strip=True)),

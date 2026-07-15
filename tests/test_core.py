@@ -176,3 +176,21 @@ def test_wanted_parses_only_public_company_position_cards():
     assert [(job.source_job_id, job.company, job.title, job.location, job.experience, job.deadline) for job in jobs] == [
         ("362629", "업스테이지", "AI Research Engineer - LLM Eval", "경기", "신입 이상", "상시")
     ]
+
+
+def test_wanted_parses_public_listing_cards_with_company_and_experience():
+    crawler = WantedCrawler({"request_delay_sec": 0, "method": "public_listings"})
+    html = """
+    <a href="/wd/371996">
+      <span>합격보상금 100만원</span><span>백엔드 엔지니어(5년 이하)</span>
+      <span>포스타입</span><span>서울 강남구 · 신입-경력 5년</span>
+      <button data-position-id="371996" data-company-name="포스타입"
+              data-position-name="백엔드 엔지니어(5년 이하)"
+              data-position-employment-type="regular"></button>
+    </a>
+    <a href="/wd/999999">공고처럼 보이는 메뉴</a>
+    """
+    jobs = crawler.parse_listing_html(html, "https://www.wanted.co.kr/wdlist")
+    assert [(job.source_job_id, job.company, job.title, job.location, job.experience) for job in jobs] == [
+        ("371996", "포스타입", "백엔드 엔지니어(5년 이하)", "서울 강남구", "신입-경력 5년")
+    ]
