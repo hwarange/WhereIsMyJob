@@ -66,6 +66,20 @@ sources:
       - 머신러닝
     request_delay_sec: 1.5
 
+  wanted:
+    # 원티드 회사 페이지의 공개 '채용중인 포지션' 목록만 수집합니다.
+    enabled: true
+    use_playwright: true
+    render_wait_ms: 1500
+    request_delay_sec: 2.0
+    # 초기 미리보기 뒤의 'N개 포지션 더보기'를 눌러 전체 공개 목록을 읽습니다.
+    expand_positions: true
+    max_expand_clicks: 3
+    targets:
+      - company: 업스테이지
+        enabled: true
+        url: https://www.wanted.co.kr/company/16049
+
   company_sites:
     # 일반 메뉴/유튜브/FAQ 링크는 수집하지 않고, JobPosting 데이터 또는
     # 상세공고 URL 패턴이 확인된 링크만 수집합니다.

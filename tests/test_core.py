@@ -5,6 +5,7 @@ from crawlers.base import Job, extract_job_detail_records, json_ld_to_jobs
 from crawlers.saramin import SaraminCrawler
 from crawlers.jumpit import JumpitCrawler
 from crawlers.jasoseol import JasoseolCrawler
+from crawlers.wanted import WantedCrawler
 from services.dedupe import build_job_key, dedupe_jobs, normalize_url
 from services.filtering import JobFilter
 from services.site_data import export_site_data
@@ -154,4 +155,24 @@ def test_jasoseol_parses_board_links_and_expands_detail_roles():
     assert [(job.source_job_id, job.company, job.position, job.experience) for job in jobs] == [
         ("104845:1", "파수에이아이", "AI컨설턴트", "신입/인턴"),
         ("104845:2", "파수에이아이", "인공지능 딥러닝", "신입/인턴"),
+    ]
+
+
+def test_wanted_parses_only_public_company_position_cards():
+    crawler = WantedCrawler({"request_delay_sec": 0})
+    html = """
+    <h1>업스테이지</h1>
+    <a href="/wd/362629" title="AI Research Engineer - LLM Eval">
+      <span>개발</span><span>AI Research Engineer - LLM Eval</span>
+      <span>경기</span><span>신입 이상</span><span>상시</span>
+      <button data-position-id="362629" data-company-name="업스테이지"
+              data-position-name="AI Research Engineer - LLM Eval"
+              data-position-employment-type="regular"></button>
+    </a>
+    <a href="/wd/123456" title="메뉴 링크">메뉴</a>
+    <a href="/company/16049">기업 소개</a>
+    """
+    jobs = crawler.parse_company_html(html, "https://www.wanted.co.kr/company/16049")
+    assert [(job.source_job_id, job.company, job.title, job.location, job.experience, job.deadline) for job in jobs] == [
+        ("362629", "업스테이지", "AI Research Engineer - LLM Eval", "경기", "신입 이상", "상시")
     ]

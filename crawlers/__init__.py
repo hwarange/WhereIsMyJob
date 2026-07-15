@@ -6,6 +6,7 @@ from .jasoseol import JasoseolCrawler
 from .jobkorea import JobKoreaCrawler
 from .jumpit import JumpitCrawler
 from .saramin import SaraminAPICrawler, SaraminCrawler
+from .wanted import WantedCrawler
 
 __all__ = [
     "BaseCrawler",
@@ -17,4 +18,5 @@ __all__ = [
     "JumpitCrawler",
     "SaraminCrawler",
     "SaraminAPICrawler",
+    "WantedCrawler",
 ]

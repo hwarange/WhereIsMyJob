@@ -9,7 +9,7 @@ import sys
 import time
 from typing import Any, Mapping
 
-from crawlers import CompanySitesCrawler, JasoseolCrawler, JobKoreaCrawler, JumpitCrawler, SaraminCrawler
+from crawlers import CompanySitesCrawler, JasoseolCrawler, JobKoreaCrawler, JumpitCrawler, SaraminCrawler, WantedCrawler
 from crawlers.base import Job
 from services.config import enabled, load_config, load_dotenv_if_available
 from services.dedupe import dedupe_jobs
@@ -35,6 +35,7 @@ def _source_specs(config: Mapping[str, Any], source_filter: str | None) -> list[
         "jumpit": "jumpit",
         "company_sites": "company_sites",
         "company_site": "company_sites",
+        "wanted": "wanted",
     }
     classes = {
         "saramin_api": SaraminCrawler,
@@ -42,6 +43,7 @@ def _source_specs(config: Mapping[str, Any], source_filter: str | None) -> list[
         "jobkorea": JobKoreaCrawler,
         "jumpit": JumpitCrawler,
         "company_sites": CompanySitesCrawler,
+        "wanted": WantedCrawler,
     }
     specs: list[tuple[str, Any, dict[str, Any]]] = []
     for name, crawler_class in classes.items():
@@ -197,7 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Collect entry-level AI/ML job postings")
     parser.add_argument("--config", default="config.yaml", help="YAML configuration path (default: config.yaml)")
     parser.add_argument("--dry-run", action="store_true", help="Collect and filter without writing persistent output")
-    parser.add_argument("--source", help="Run only one source: saramin, jasoseol, jobkorea, jumpit, company_sites")
+    parser.add_argument("--source", help="Run only one source: saramin, jasoseol, jobkorea, jumpit, wanted, company_sites")
     parser.add_argument("--export-json", help="Write filtered jobs to a GitHub Pages JSON file")
     return parser
 
