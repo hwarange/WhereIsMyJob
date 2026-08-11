@@ -208,7 +208,9 @@ class BaseCrawler:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             try:
-                page = browser.new_page(user_agent=self.user_agent)
+                # Honor a per-source User-Agent override so rendered requests
+                # present the same identity as plain HTTP requests.
+                page = browser.new_page(user_agent=self._headers().get("User-Agent", self.user_agent))
                 page.goto(url, wait_until="domcontentloaded", timeout=int(self.timeout * 1000))
                 # Search pages often render their result cards just after the
                 # initial document.  A bounded wait is enough to capture those
@@ -289,6 +291,13 @@ def extract_job_detail_records(
     soup = BeautifulSoup(html, "html.parser")
     pattern = re.compile(detail_url_pattern, re.IGNORECASE)
     source_host = urlparse(base_url).netloc.lower()
+
+    def locator(raw_href: str) -> str:
+        # Some boards keep the posting ID in the query string (?job_id=123),
+        # so match the pattern against path and query together.
+        parsed_href = urlparse(urljoin(base_url, raw_href))
+        return parsed_href.path + (f"?{parsed_href.query}" if parsed_href.query else "")
+
     jobs: list[Job] = []
     seen_urls: set[str] = set()
     for anchor in soup.select("a[href]"):
@@ -297,16 +306,29 @@ def extract_job_detail_records(
         parsed = urlparse(href)
         if not href.startswith(("http://", "https://")) or not text or parsed.netloc.lower() != source_host:
             continue
-        if href in seen_urls or not pattern.search(parsed.path):
+        match = pattern.search(locator(anchor.get("href", "")))
+        if href in seen_urls or not match:
             continue
         if text.casefold() in {"자세히 보기", "상세 보기", "지원하기", "more", "view"}:
             continue
         parent = anchor.find_parent(["article", "li"]) or anchor.parent
+        # A parent that holds links to several DISTINCT postings is the list
+        # container, not this posting's card; using it would leak every
+        # sibling's text into raw_text (e.g. one "신입" card would mark all
+        # postings entry-level).  A card linking to the same posting twice
+        # (logo + title) keeps its full card context.
+        if parent is not None:
+            distinct_targets = {
+                locator(other.get("href", ""))
+                for other in parent.find_all("a", href=True)
+                if pattern.search(locator(other.get("href", "")))
+            }
+            if len(distinct_targets) > 1:
+                parent = anchor
         context = clean_text(parent.get_text(" ", strip=True) if parent else text)
         if len(text) < 4 or len(context) < 4:
             continue
-        match = pattern.search(parsed.path)
-        source_job_id = match.groupdict().get("id", "") if match else ""
+        source_job_id = match.groupdict().get("id", "")
         seen_urls.add(href)
         jobs.append(
             Job(

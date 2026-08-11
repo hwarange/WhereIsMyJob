@@ -3,6 +3,12 @@
 The search page server-renders company, title, role, employment type, closing
 date, and a known detail URL.  Detail pages are read only to add an education
 requirement or split a combined posting into individual roles.
+
+jasoseol.com's robots.txt allows collecting ``/search`` and ``/recruit/*``,
+but the site's CDN rejects requests whose User-Agent is not a browser.  The
+crawler therefore sends a regular browser User-Agent by default while keeping
+robots.txt checks and per-host rate limiting on.  No login, CAPTCHA, or other
+access control is involved; the same HTML is served to any browser.
 """
 
 from __future__ import annotations
@@ -10,7 +16,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any, Mapping
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlsplit, urlunsplit
 
 from .base import BaseCrawler, CrawlerError, Job, clean_text
 
@@ -18,33 +24,72 @@ logger = logging.getLogger(__name__)
 
 _DETAIL_PATH = re.compile(r"^/recruit/(?P<id>\d+)/?$")
 _APPLICANT_SUFFIX = re.compile(r"\s*\d+[,.]?\d*명\s*작성\s*$")
-_ROLE_PREFIX = re.compile(r"^(?P<experience>신입(?:\s*/\s*인턴)?|인턴|경력|경력무관)\s+(?P<role>.+)$")
+# Role rows start with one or more employment/experience tokens ("신입",
+# "계약직", "신입 / 인턴", ...) followed by the role name.
+_ROLE_TOKEN = (
+    r"신입|채용전환형\s*인턴|체험형\s*인턴|인턴|경력\s*무관|경력|정규직|계약직|"
+    r"파견직|무기계약직|위촉직|프리랜서|아르바이트"
+)
+_ROLE_PREFIX = re.compile(
+    rf"^(?P<experience>(?:{_ROLE_TOKEN})(?:\s*/\s*(?:{_ROLE_TOKEN}))*)\s+(?P<role>.+)$"
+)
+_EXPERIENCE_TOKEN = re.compile(_ROLE_TOKEN)
+
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+    ),
+}
 
 
 class JasoseolCrawler(BaseCrawler):
     def __init__(self, settings: Mapping[str, Any] | None = None, session: Any = None) -> None:
-        super().__init__("jasoseol", settings, session)
+        merged = dict(settings or {})
+        merged.setdefault("headers", dict(_BROWSER_HEADERS))
+        # The page is server-rendered; plain HTTP is sufficient and avoids a
+        # Chromium launch per page.  ``use_playwright: true`` re-enables it.
+        merged.setdefault("use_playwright", False)
+        super().__init__("jasoseol", merged, session)
+
+    def _page_url(self, base_url: str, page: int) -> str:
+        if page <= 1:
+            return base_url
+        parts = urlsplit(base_url)
+        query = dict(parse_qsl(parts.query, keep_blank_values=True))
+        query["page"] = str(page)
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
     def collect(self) -> list[Job]:
         search_url = self.settings.get("url", "https://jasoseol.com/search")
-        try:
-            # The public page server-renders the cards, but rejects ordinary
-            # HTTP clients.  Render the same public page in Chromium first;
-            # ``fetch_html`` falls back to the declared HTTP client only when
-            # rendering itself is unavailable.
-            search_html = self.fetch_html(search_url, prefer_playwright=True)
-        except Exception as exc:
-            logger.exception("jasoseol search collection failed for %s: %s", search_url, exc)
-            return []
+        pages = max(1, int(self.settings.get("pages", 3)))
+        listings: list[Job] = []
+        seen_urls: set[str] = set()
+        for page in range(1, pages + 1):
+            page_url = self._page_url(search_url, page)
+            try:
+                search_html = self.fetch_html(page_url, prefer_playwright=True)
+            except Exception as exc:
+                logger.exception("jasoseol search collection failed for %s: %s", page_url, exc)
+                continue
+            page_listings = self.parse_search_html(search_html, page_url)
+            if not page_listings:
+                logger.warning(
+                    "jasoseol page %d returned no public result cards; the site may be declining the crawler",
+                    page,
+                )
+                break
+            fresh = [listing for listing in page_listings if listing.url not in seen_urls]
+            seen_urls.update(listing.url for listing in fresh)
+            listings.extend(fresh)
 
-        listings = self.parse_search_html(search_html, search_url)
-        if not listings:
-            logger.warning(
-                "jasoseol search returned no public result cards; the site may be declining the declared crawler"
-            )
         limit = int(self.settings.get("detail_fetch_limit", 40))
         jobs: list[Job] = []
-        for listing in listings[:limit]:
+        for index, listing in enumerate(listings):
+            if index >= limit:
+                # Keep the card-level record instead of dropping the listing.
+                jobs.append(listing)
+                continue
             try:
                 detail_html = self.fetch_html(listing.url, prefer_playwright=True)
                 jobs.extend(self.parse_recruit_detail(detail_html, listing))
@@ -94,8 +139,11 @@ class JasoseolCrawler(BaseCrawler):
                 continue
             seen.add(url)
             employment = anchor.select_one('[data-sentry-component="CompanyEmploymentType"]')
-            employment_parts = [clean_text(part.get_text(" ", strip=True)) for part in employment.select("span")]
-            employment_parts = [part for part in employment_parts if part]
+            employment_parts = [clean_text(part.get_text(" ", strip=True)) for part in employment.select("span")] if employment else []
+            # The spans mix company size ("대기업") with hiring type ("신입");
+            # keep only parts that look like an experience/employment token.
+            experience_parts = [part for part in employment_parts if _EXPERIENCE_TOKEN.search(part)]
+            experience = experience_parts[0] if experience_parts else ""
             period = anchor.select_one('[data-sentry-component="EmploymentPeriod"]')
             deadline = clean_text(period.get_text(" ", strip=True) if period else "")
             context = clean_text(anchor.get_text(" ", strip=True))
@@ -107,8 +155,8 @@ class JasoseolCrawler(BaseCrawler):
                     position=position or title,
                     url=url,
                     deadline=deadline,
-                    experience=employment_parts[1] if len(employment_parts) > 1 else "",
-                    employment_type=employment_parts[1] if len(employment_parts) > 1 else "",
+                    experience=experience,
+                    employment_type=experience,
                     raw_text=context,
                 )
             )

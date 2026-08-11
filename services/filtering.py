@@ -126,13 +126,15 @@ class JobFilter:
 
 
 def _allows_bachelor_or_lower(job: Job) -> bool:
-    """Return true when the posting is open to bachelor's-or-lower applicants."""
+    """Return false only when the posting explicitly requires a graduate degree.
+
+    Sources such as Jasoseol often omit education requirements entirely, so
+    requiring positive "학사 이하 가능" evidence would silently hide whole
+    sources.  A posting with no education mention stays visible.
+    """
 
     text = " ".join((job.title, job.position, job.experience, job.raw_text)).casefold()
-    is_open_to_bachelor_or_lower = bool(
-        re.search(r"학력\s*무관|고졸|초대졸|(?<!초)대졸|학사|4\s*년제|대학교\s*졸업", text)
-    )
     requires_graduate_degree = bool(
-        re.search(r"(?:석사|박사|대학원)\s*(?:이상|필수|졸업|학위\s*소지|학위자)", text)
+        re.search(r"(?:석사|박사|대학원)\s*(?:이상|↑|필수|졸업|학위\s*소지|학위자)", text)
     )
-    return is_open_to_bachelor_or_lower and not requires_graduate_degree
+    return not requires_graduate_degree

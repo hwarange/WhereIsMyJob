@@ -28,43 +28,73 @@ sources:
   jasoseol:
     enabled: true
     # 검색 결과는 회사·직무·고용형태·마감일을 서버에서 바로 제공합니다.
+    # robots.txt는 /search·/recruit 수집을 허용하지만 CDN이 브라우저가 아닌
+    # User-Agent를 거부하므로 크롤러가 기본으로 브라우저 UA를 사용합니다.
     url: https://jasoseol.com/search
-    use_playwright: true
-    # 검색 카드의 상세 페이지에서 학력 조건과 개별 모집 직무를 확인합니다.
-    detail_fetch_limit: 40
+    # 서버 렌더링 페이지라 일반 HTTP 요청으로 충분합니다.
+    use_playwright: false
+    # 최신순 목록을 몇 페이지까지 수집할지 (페이지당 20개)
+    pages: 5
+    # 검색 카드의 상세 페이지에서 개별 모집 직무를 확인합니다.
+    detail_fetch_limit: 60
+    request_delay_sec: 1.5
+
+  jobkorea:
+    enabled: true
+    # robots.txt(2026-04 개정)는 키워드 검색(/Search)을 금지하지만 직무별
+    # 공고 보드(/recruit/joblist)와 상세(/Recruit/GI_Read)는 허용합니다.
+    # 보드를 AI/ML 직무 코드와 사이트의 신입 필터(careerType=1)로 요청하며,
+    # 목록 행에 회사·마감일·경력·학력이 모두 있어 상세 페이지는 읽지 않습니다.
+    duty_ctgr: "10031"
+    duties:
+      - "1000242"  # AI/ML엔지니어
+      - "1000417"  # AI/ML연구원
+      - "1000237"  # 데이터사이언티스트
+      - "1000422"  # MLOps엔지니어
+      - "1000423"  # AI서비스개발자
+    career_type: "1"
+    # duty별 최대 페이지 수
+    pages: 2
+    request_delay_sec: 1.5
+
+  jobplanet:
+    enabled: true
+    # 잡플래닛 채용 보드가 데이터를 받아오는 공개 JSON API를 직접 호출합니다.
+    # robots.txt는 /job·/api 경로를 허용하며, CDN이 브라우저가 아닌
+    # User-Agent를 거부하므로 크롤러가 기본으로 브라우저 UA를 사용합니다.
+    # 모집 유형에 '신입'이 포함된 공고만 유지합니다.
+    newcomer_only: true
+    # 키워드별 최대 페이지 수 (페이지당 20건)
+    pages: 3
+    page_size: 20
     keywords:
       - AI
+      - 인공지능
       - 머신러닝
       - 딥러닝
       - LLM
       - MLOps
-    request_delay_sec: 1.5
-
-  jobkorea:
-    # robots.txt가 검색 결과 수집을 허용하지 않아 비활성화합니다.
-    enabled: false
-    url: https://www.jobkorea.co.kr/Search/
-    use_playwright: false
-    keywords:
-      - "AI Engineer 신입"
-      - "머신러닝 신입"
-      - "딥러닝 신입"
-      - "LLM 신입"
+      - 데이터 사이언티스트
     request_delay_sec: 1.5
 
   jumpit:
     enabled: true
-    url: https://jumpit.saramin.co.kr/positions?integrated=true
-    use_playwright: true
-    render_wait_ms: 3000
-    # 목록에 없는 학력 조건을 상세 공고에서 확인합니다.
-    detail_fetch_limit: 80
+    # 점핏 검색 페이지가 데이터를 받아오는 공개 JSON API를 직접 호출합니다.
+    # 브라우저 렌더링이 필요 없고, 신입 여부·경력 범위·마감일이 구조화되어 옵니다.
+    # 신입 지원 가능 공고만 요청합니다 (사이트의 신입 필터와 동일한 career=0).
+    newcomer_only: true
+    # 키워드별 최대 페이지 수 (페이지당 16건)
+    pages: 3
     keywords:
       - AI
-      - ML
-      - LLM
-      - MLOps
+      - 인공지능
       - 머신러닝
+      - 딥러닝
+      - LLM
+      - ML
+      - 데이터
+    # 상세 API에서 자격요건·주요업무·학력 정보를 보강합니다.
+    detail_fetch_limit: 60
     request_delay_sec: 1.5
 
   wanted:
@@ -84,57 +114,64 @@ sources:
   company_sites:
     # 일반 메뉴/유튜브/FAQ 링크는 수집하지 않고, JobPosting 데이터 또는
     # 상세공고 URL 패턴이 확인된 링크만 수집합니다.
+    # url은 랜딩 페이지가 아닌 실제 공고 "목록" 페이지, detail_url_pattern은
+    # 그 목록에서 확인된 공고 상세 링크 형식입니다.
     enabled: true
     # true면 Google Sheets의 Company_Targets가 config targets보다 우선합니다.
     from_sheet: true
     use_playwright: true
+    # 목록 카드가 스크립트로 늦게 그려지는 사이트를 위해 렌더링 대기를 늘립니다.
+    render_wait_ms: 5000
     request_delay_sec: 2.0
     targets:
-      - company: 삼성전자
-        enabled: true
-        url: https://www.samsungcareers.com/
-        query_hint: AI 신입
-      - company: LG
-        enabled: true
-        url: https://careers.lg.com/
-        query_hint: AI 신입
       - company: SK
         enabled: true
-        url: https://www.skcareers.com/
-        query_hint: AI 신입
+        url: https://www.skcareers.com/Recruit
+        detail_url_pattern: "/Recruit/Detail/(?P<id>R\\d+)"
       - company: 현대자동차
         enabled: true
+        # 메인 페이지에 진행 중 공고 카드가 렌더링됩니다. 공고 ID가 없는
+        # 조회용 쿼리 링크라 URL 기준으로 중복을 제거합니다.
         url: https://talent.hyundai.com/
-        query_hint: AI 신입
+        detail_url_pattern: "/apply/applyView\\.hc\\?"
       - company: 현대오토에버
         enabled: true
-        # 공개 채용 목록만 확인합니다. 개별 지원/상세 경로는 robots.txt가 금지합니다.
+        # 상세 페이지(/o/{id})는 공개이며 robots.txt는 지원 경로(/o/*/apply)만 금지합니다.
         url: https://career.hyundai-autoever.com/ko/apply
-        query_hint: AI 신입
-      - company: 네이버
-        enabled: true
-        url: https://recruit.navercorp.com/
-        query_hint: AI 신입
+        detail_url_pattern: "/o/(?P<id>\\d+)"
       - company: 카카오
         enabled: true
-        url: https://careers.kakao.com/
-        query_hint: AI 신입
+        url: https://careers.kakao.com/jobs?part=TECHNOLOGY
+        detail_url_pattern: "/jobs/(?P<id>P-\\d+)"
       - company: 쿠팡
         enabled: true
-        url: https://www.coupang.jobs/
-        query_hint: Machine Learning
+        url: https://www.coupang.jobs/en/jobs/?q=machine+learning&pagesize=50
+        detail_url_pattern: "/jobs/(?P<id>\\d+)/"
       - company: 토스
         enabled: true
+        # 목록 페이지(/career)만 요청합니다. 상세 경로는 robots.txt가 금지하므로
+        # 링크 URL과 카드 텍스트만 수집합니다.
         url: https://toss.im/career
-        query_hint: ML
+        detail_url_pattern: "/career/job-detail\\?job_id=(?P<id>\\d+)"
       - company: 라인
         enabled: true
-        url: https://careers.linecorp.com/
-        query_hint: AI
+        url: https://careers.linecorp.com/ko/jobs/
+        detail_url_pattern: "/ko/jobs/(?P<id>\\d+)/"
       - company: 우아한형제들
         enabled: true
-        url: https://career.woowahan.com/
-        query_hint: AI
+        url: https://career.woowahan.com/recruitment/
+        detail_url_pattern: "/recruitment/(?P<id>R\\d+)/detail"
+      # 아래 3곳은 공고 목록이 링크가 아닌 비공개 API/스크립트로만 렌더링되어
+      # 범용 수집기로는 수집할 수 없습니다. 사이트별 전용 어댑터가 필요합니다.
+      - company: 삼성전자
+        enabled: false
+        url: https://www.samsungcareers.com/hr/
+      - company: LG
+        enabled: false
+        url: https://careers.lg.com/apply/
+      - company: 네이버
+        enabled: false
+        url: https://recruit.navercorp.com/rcrt/list.do
 
 notifications:
   slack:

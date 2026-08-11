@@ -53,7 +53,7 @@ RAW_HEADERS = [
 ]
 RULE_HEADERS = ["type", "keyword", "weight", "enabled", "note"]
 SOURCE_HEADERS = ["source", "enabled", "method", "url", "frequency", "note"]
-TARGET_HEADERS = ["company", "enabled", "url", "query_hint", "note"]
+TARGET_HEADERS = ["company", "enabled", "url", "detail_url_pattern", "query_hint", "note"]
 RUN_LOG_HEADERS = [
     "run_at",
     "status",
